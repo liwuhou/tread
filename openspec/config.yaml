@@ -1,0 +1,77 @@
+schema: spec-driven
+context: >-
+  <!-- @xiaoe/live-devkit:start -->
+
+  ## OpenSpec 工作流规则
+
+
+  ### 智能任务分发
+
+  `/opsx:apply` 根据任务类型自动选择:
+
+  - 功能实现/bug 修复 → TDD 流程
+
+  - 2+ 独立子任务 → 并行 Agent
+
+  - 简单变更 → 直接实现 (配置/文档/单行修改)
+
+  - UI 变更 → 强制检查 Figma 设计稿 / 交互 Demo / 设计系统
+
+
+  ### Figma 设计稿强制检测
+
+  涉及 UI 变更的 change 必须:
+
+  1. 检查 .claude/figma-links.json pending 链接
+
+  2. 主动询问用户是否有 Figma 设计稿（如果 pending 非空则跳过询问，自动调用 figma-spec）
+
+  3. 调用 /figma-spec 解析后再生成 design artifact
+
+  4. 将 design-spec.md 引用到 design.md 中
+
+
+  ### Figma 设计稿桥接规则
+
+  design-spec.md 生成后，必须桥接到下游环节:
+
+  1. spec 生成：如果 design-spec.md 存在 + UI capability，自动注入 Design Tokens
+  section（颜色/字体/间距/布局）
+
+  2. apply 实现：如果 design-spec.md 存在 + UI 任务，强制读取并输出 Design Fidelity Checklist
+
+  3. verify 验证：如果 design-spec.md 存在，增加 UI Fidelity 维度，检查 CSS 值与 design-spec 匹配
+
+
+  ### 交互 Demo 桥接规则
+
+  interaction-demo.html 存在时，桥接到下游环节:
+
+  1. spec 生成：自动注入 Interaction Patterns section（组件状态表、状态切换时序表、边界情况列表、键盘支持表）
+
+  2. apply 实现：强制读取并输出 Interaction Fidelity Checklist
+
+  3. verify 验证：增加 Interaction Fidelity 维度
+
+
+  ### 设计系统桥接规则（无 Figma 时）
+
+  无 design-spec.md 但涉及 UI 时:
+
+  1. apply 实现：按选择的 design-context 加载设计系统，输出 Design Fidelity Checklist
+
+  2. verify 验证：增加 Design Fidelity 维度
+
+
+  ### Context Gate（上下文门控）
+
+  对明显不涉及 UI 的变更（后端逻辑、配置、测试、文档、API），不询问 Figma/交互 Demo/设计系统。
+
+
+  ### TDD 开发流程
+
+  - 遵循 TDD 开发流程：先写测试，再实现
+
+  - 遵循 Conventional Commits 提交规范
+
+  <!-- @xiaoe/live-devkit:end -->

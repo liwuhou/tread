@@ -1,0 +1,44 @@
+{
+  "version": "0.0.4-alpha.6",
+  "mode": "universal",
+  "trackedFields": {
+    "hooks": {
+      "PreToolUse": [
+        {
+          "matcher": "Edit|Write",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node -e \"const p=require('path'),f=require('fs');for(let d=process.cwd();d!==p.dirname(d);d=p.dirname(d)){const h=p.join(d,'.claude','live-devkit','hooks','check-openspec.cjs');if(f.existsSync(h)){require(h);break}}\""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "copiedFiles": {
+    "skills": [
+      "FIGMA_WORKFLOW.md",
+      "figma-spec",
+      "figma-use",
+      "interaction-demo",
+      "openspec-apply-change",
+      "openspec-archive-change",
+      "openspec-bulk-archive-change",
+      "openspec-continue-change",
+      "openspec-explore",
+      "openspec-ff-change",
+      "openspec-new-change",
+      "openspec-onboard",
+      "openspec-propose",
+      "openspec-sync-specs",
+      "openspec-verify-change",
+      "xed-design"
+    ],
+    "commands": [
+      "devkit",
+      "opsx"
+    ]
+  },
+  "lastModified": "2026-06-30T02:44:51.840Z"
+}
