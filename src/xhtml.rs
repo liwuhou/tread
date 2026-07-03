@@ -532,10 +532,26 @@ pub fn xhtml_to_lines(
                     continue;
                 }
 
-                let style = current_style(bold, italic, in_code, link, heading);
-                push(&mut cur, &text, style);
-                if link {
-                    link_text.push_str(&text);
+                // In pre/code block, handle newlines specially
+                if in_pre || in_code {
+                    // Split text by newlines and flush each line separately
+                    let lines: Vec<&str> = text.split('\n').collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        if !line.is_empty() {
+                            let style = current_style(bold, italic, in_code, link, heading);
+                            push(&mut cur, line, style);
+                        }
+                        // Flush after each line except the last (to avoid extra empty line)
+                        if i < lines.len() - 1 {
+                            flush(&mut out, &mut cur);
+                        }
+                    }
+                } else {
+                    let style = current_style(bold, italic, in_code, link, heading);
+                    push(&mut cur, &text, style);
+                    if link {
+                        link_text.push_str(&text);
+                    }
                 }
             }
 
