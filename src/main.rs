@@ -102,11 +102,6 @@ fn main() -> Result<()> {
 }
 
 fn run_web(url: &str, refresh: bool, interactive: bool) -> Result<()> {
-    // Try session cache first, then browser cookies
-    let domain = web::extract_domain(url);
-    let cookies = headless::load_session(&domain)
-        .unwrap_or_else(|| headless::get_cookies_for_url(url));
-
     // Try cache first (unless --refresh)
     let page = if !refresh {
         web::load_web_cache(url)
@@ -119,11 +114,17 @@ fn run_web(url: &str, refresh: bool, interactive: bool) -> Result<()> {
         None => {
             // Fetch HTML
             let html = if interactive {
-                // Headless Chrome mode — handles SPA/dynamic content
+                // Headless Chrome mode — read fresh cookies from browser
                 eprintln!("正在使用 Headless Chrome 加载页面...");
+                let cookies = headless::get_cookies_for_url(url);
                 headless::headless_fetch(url, &cookies)?
             } else {
                 // Standard HTTP fetch with cookies
+                // Try session cache first, then browser cookies
+                let domain = web::extract_domain(url);
+                let cookies = headless::load_session(&domain)
+                    .unwrap_or_else(|| headless::cookies_to_name_value(&headless::get_cookies_for_url(url)));
+
                 let result = headless::fetch_html_with_cookies(url, &cookies);
                 match result {
                     Ok(html) => html,
@@ -147,9 +148,13 @@ fn run_web(url: &str, refresh: bool, interactive: bool) -> Result<()> {
             // Save to cache
             let _ = web::save_web_cache(url, &page);
 
-            // Save session if cookies worked
-            if !cookies.is_empty() {
-                let _ = headless::save_session(&domain, &cookies);
+            // Save session if cookies worked (only for non-interactive mode)
+            if !interactive {
+                let domain = web::extract_domain(url);
+                let cookies = headless::cookies_to_name_value(&headless::get_cookies_for_url(url));
+                if !cookies.is_empty() {
+                    let _ = headless::save_session(&domain, &cookies);
+                }
             }
 
             page

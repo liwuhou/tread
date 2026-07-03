@@ -10,10 +10,14 @@ use std::path::PathBuf;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Get cookies for a specific URL from the user's browser.
-/// Returns a vector of (name, value) pairs.
+/// Returns a vector of complete Cookie objects with all attributes.
 /// Returns empty vec if reading fails (silent degradation).
-pub fn get_cookies_for_url(url: &str) -> Vec<(String, String)> {
-    let opts = cookie_scoop::GetCookiesOptions::new(url);
+pub fn get_cookies_for_url(url: &str) -> Vec<cookie_scoop::Cookie> {
+    use cookie_scoop::BrowserName;
+
+    let opts = cookie_scoop::GetCookiesOptions::new(url)
+        .browsers(vec![BrowserName::Chrome])  // Explicitly specify Chrome
+        .timeout_ms(5000);  // 5 second timeout
 
     // Run async function in a blocking tokio runtime
     let rt = match tokio::runtime::Runtime::new() {
@@ -23,8 +27,17 @@ pub fn get_cookies_for_url(url: &str) -> Vec<(String, String)> {
 
     let result = rt.block_on(cookie_scoop::get_cookies(opts));
 
-    result
-        .cookies
+    // Log warnings for debugging
+    if !result.warnings.is_empty() {
+        eprintln!("  ⚠ Cookie 读取警告: {:?}", result.warnings);
+    }
+
+    result.cookies
+}
+
+/// Extract just name and value from cookies (for HTTP headers).
+pub fn cookies_to_name_value(cookies: &[cookie_scoop::Cookie]) -> Vec<(String, String)> {
+    cookies
         .iter()
         .map(|c| (c.name.clone(), c.value.clone()))
         .collect()
@@ -68,23 +81,165 @@ pub fn fetch_html_with_cookies(url: &str, cookies: &[(String, String)]) -> Resul
 // Headless browser
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Get the user's Chrome profile directory path.
+/// Returns None if Chrome is not installed or profile not found.
+fn get_chrome_user_data_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        dirs::home_dir().map(|home| {
+            home.join("Library/Application Support/Google/Chrome")
+        })
+    }
+    #[cfg(target_os = "linux")]
+    {
+        dirs::home_dir().map(|home| {
+            home.join(".config/google-chrome")
+        })
+    }
+    #[cfg(target_os = "windows")]
+    {
+        dirs::data_local_dir().map(|data| {
+            data.join("Google/Chrome/User Data")
+        })
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+/// Copy Chrome profile to a temporary directory (to avoid lock issues).
+/// This is a best-effort operation - if it fails, we'll use the original directory.
+fn copy_chrome_profile_to_temp() -> Option<std::path::PathBuf> {
+    let source_dir = get_chrome_user_data_dir()?;
+
+    // Check if source exists
+    if !source_dir.exists() {
+        return None;
+    }
+
+    // Create temp directory
+    let temp_dir = std::env::temp_dir().join("tread-chrome-profile");
+
+    // Clean up any existing temp directory
+    if temp_dir.exists() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    // Try to copy essential files (Default profile, Local State)
+    // We only copy what's needed for authentication
+    eprintln!("  📋 复制 Chrome profile 到临时目录...");
+
+    // Create temp directory
+    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+        eprintln!("  ⚠ 创建临时目录失败: {e}");
+        return None;
+    }
+
+    // Copy Default profile directory (contains cookies, localStorage, etc.)
+    let default_profile = source_dir.join("Default");
+    if default_profile.exists() {
+        let temp_default = temp_dir.join("Default");
+        if let Err(e) = copy_dir_recursive(&default_profile, &temp_default) {
+            eprintln!("  ⚠ 复制 Default profile 失败: {e}");
+            // Continue anyway, maybe other profiles will work
+        }
+    }
+
+    // Copy Local State file (contains encryption keys)
+    let local_state = source_dir.join("Local State");
+    if local_state.exists() {
+        let temp_local_state = temp_dir.join("Local State");
+        if let Err(e) = std::fs::copy(&local_state, &temp_local_state) {
+            eprintln!("  ⚠ 复制 Local State 失败: {e}");
+        }
+    }
+
+    eprintln!("  ✓ Profile 复制完成");
+    Some(temp_dir)
+}
+
+/// Recursively copy a directory.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst)?;
+    }
+
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            // Skip lock files and large cache files
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            if file_name_str == "LOCK" || file_name_str.contains("Cache") {
+                continue;
+            }
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Fetch HTML using a visible Chrome browser (non-headless).
 /// The user can interact with the browser window to log in if needed.
 /// Waits for the page content to stabilize before extracting.
 ///
-/// If cookies are provided, they will be injected into the browser session
-/// to reuse authentication state from the user's local browser.
-pub fn headless_fetch(url: &str, cookies: &[(String, String)]) -> Result<String> {
+/// This function will try to use a copy of the user's local Chrome profile to reuse
+/// authentication state (cookies, localStorage, etc.). If Chrome is running,
+/// the profile copy will still work.
+pub fn headless_fetch(url: &str, cookies: &[cookie_scoop::Cookie]) -> Result<String> {
     use headless_chrome::browser::LaunchOptionsBuilder;
 
+    // Try to copy user's Chrome profile to temp directory
+    let user_data_dir = copy_chrome_profile_to_temp();
+    let using_user_profile = user_data_dir.is_some();
+
+    if using_user_profile {
+        eprintln!("  📂 使用复制的 Chrome profile");
+    }
+
     // Launch Chrome in visible mode (not headless)
-    let launch_options = LaunchOptionsBuilder::default()
-        .headless(false)
+    let mut launch_options_builder = LaunchOptionsBuilder::default();
+    launch_options_builder.headless(false);
+
+    // Set user_data_dir if available
+    if let Some(ref dir) = user_data_dir {
+        launch_options_builder.user_data_dir(Some(dir.clone()));
+    }
+
+    eprintln!("  🚀 正在启动 Chrome...");
+    let launch_options = launch_options_builder
         .build()
         .context("构建 Chrome 启动选项失败。请确保已安装 Chrome 或 Chromium。")?;
 
-    let browser = headless_chrome::Browser::new(launch_options)
-        .context("启动 Chrome 失败。请确保已安装 Chrome 或 Chromium。")?;
+    let browser = match headless_chrome::Browser::new(launch_options) {
+        Ok(b) => {
+            eprintln!("  ✓ Chrome 启动成功");
+            b
+        },
+        Err(e) => {
+            if using_user_profile {
+                eprintln!("  ⚠ 无法使用本地 Chrome profile（可能 Chrome 正在运行）: {e}");
+                eprintln!("  💡 请关闭 Chrome 后重试，或手动在浏览器窗口中登录");
+
+                // Fall back to temp profile with cookie injection
+                let launch_options = LaunchOptionsBuilder::default()
+                    .headless(false)
+                    .build()
+                    .context("构建 Chrome 启动选项失败")?;
+                headless_chrome::Browser::new(launch_options)
+                    .context("启动 Chrome 失败。请确保已安装 Chrome 或 Chromium。")?
+            } else {
+                return Err(e).context("启动 Chrome 失败。请确保已安装 Chrome 或 Chromium。");
+            }
+        }
+    };
 
     let tab = browser.new_tab()
         .context("创建浏览器标签页失败")?;
@@ -97,21 +252,24 @@ pub fn headless_fetch(url: &str, cookies: &[(String, String)]) -> Result<String>
     tab.wait_until_navigated()
         .with_context(|| format!("等待页面加载超时: {url}"))?;
 
-    // Inject cookies if provided (to reuse authentication from local browser)
-    if !cookies.is_empty() {
-        // Convert cookie tuples to CookieParam
+    // If using user profile, authentication should be reused automatically
+    // Otherwise, inject cookies if provided
+    if !using_user_profile && !cookies.is_empty() {
+        eprintln!("  🍪 读取到 {} 个 cookies，正在注入...", cookies.len());
+
+        // Convert cookie_scoop::Cookie to headless_chrome::CookieParam
         let cookie_params: Vec<CookieParam> = cookies
             .iter()
-            .map(|(name, value)| CookieParam {
-                name: name.clone(),
-                value: value.clone(),
-                url: Some(url.to_string()),
-                domain: None,
-                path: None,
-                secure: None,
-                http_only: None,
-                same_site: None,
-                expires: None,
+            .map(|c| CookieParam {
+                name: c.name.clone(),
+                value: c.value.clone(),
+                url: c.url.clone().or_else(|| Some(url.to_string())),
+                domain: c.domain.clone(),
+                path: c.path.clone(),
+                secure: c.secure,
+                http_only: c.http_only,
+                same_site: None, // SameSite mapping not needed for most cases
+                expires: c.expires.map(|e| e as f64),
                 priority: None,
                 same_party: None,
                 source_scheme: None,
@@ -124,14 +282,18 @@ pub fn headless_fetch(url: &str, cookies: &[(String, String)]) -> Result<String>
         if let Err(e) = tab.set_cookies(cookie_params) {
             eprintln!("  ⚠ Cookies 注入失败，可能需要手动登录: {e}");
         } else {
+            eprintln!("  ✓ Cookies 注入成功，重载页面...");
             // Reload page to apply cookies (ignore cache to ensure cookies take effect)
             if let Err(e) = tab.reload(true, None) {
                 eprintln!("  ⚠ 页面重载失败: {e}");
             } else {
                 // Wait for page to load after reload
                 let _ = tab.wait_until_navigated();
+                eprintln!("  ✓ 页面重载完成");
             }
         }
+    } else {
+        eprintln!("  ⚠ 未读取到任何 cookies");
     }
 
     // Print login hint

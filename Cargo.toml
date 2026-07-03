@@ -8,6 +8,10 @@ description = "A terminal-based reader for Markdown, EPUB and web content"
 name = "tread"
 path = "src/main.rs"
 
+[[bin]]
+name = "test-cookies"
+path = "test-cookies.rs"
+
 [dependencies]
 anyhow = "1"
 cookie-scoop = "0.1"

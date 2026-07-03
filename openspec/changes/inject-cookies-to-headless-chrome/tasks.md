@@ -22,11 +22,11 @@
 
 ## 4. 手动验证
 
-- [ ] 4.1 使用 `-i` 模式访问一个需要登录的网站（如已登录的 GitHub、Twitter 等），验证无需重新登录
-- [ ] 4.2 验证在无 cookies 时（如隐私模式或无登录记录），仍显示原有的登录提示
-- [ ] 4.3 验证 cookies 注入失败时（如浏览器未运行），程序不崩溃，继续显示登录提示
+- [x] 4.1 使用 `-i` 模式访问一个需要登录的网站（如已登录的 GitHub、Twitter 等），验证无需重新登录
+- [x] 4.2 验证在无 cookies 时（如隐私模式或无登录记录），仍显示原有的登录提示
+- [x] 4.3 验证 cookies 注入失败时（如浏览器未运行），程序不崩溃，继续显示登录提示
 
 ## 5. 文档和提交
 
 - [x] 5.1 更新函数注释，说明 cookies 注入行为
-- [ ] 5.2 使用 Conventional Commits 格式提交：`feat(headless): inject browser cookies to avoid re-login in interactive mode`
+- [x] 5.2 使用 Conventional Commits 格式提交：`feat(headless): inject browser cookies to avoid re-login in interactive mode`
