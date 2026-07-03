@@ -32,12 +32,12 @@
 
 ## 5. 手动验证
 
-- [ ] 5.1 使用 `-i` 模式访问包含表格的网页（如 Wikipedia、技术文档），验证表格正确渲染
-- [ ] 5.2 验证代码块保留缩进和格式
-- [ ] 5.3 验证宽表格的压缩或截断行为
-- [ ] 5.4 验证嵌套标签（如表格中的链接、粗体）被正确处理
+- [x] 5.1 使用 `-i` 模式访问包含表格的网页（如 Wikipedia、技术文档），验证表格正确渲染
+- [x] 5.2 验证代码块保留缩进和格式
+- [x] 5.3 验证宽表格的压缩或截断行为
+- [x] 5.4 验证嵌套标签（如表格中的链接、粗体）被正确处理
 
 ## 6. 文档和提交
 
-- [ ] 6.1 更新函数注释，说明表格和代码块的渲染逻辑
-- [ ] 6.2 使用 Conventional Commits 格式提交：`feat(xhtml): add table rendering and enhance code block formatting`
+- [x] 6.1 更新函数注释，说明表格和代码块的渲染逻辑
+- [x] 6.2 使用 Conventional Commits 格式提交：`feat(xhtml): add table rendering and enhance code block formatting`
