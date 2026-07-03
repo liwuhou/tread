@@ -1,8 +1,185 @@
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use ratatui::style::{Color, Modifier, Style};
+use unicode_width::UnicodeWidthStr;
 
 use crate::image::{ImageNode, LineContent};
+
+/// Represents a parsed HTML table.
+#[derive(Debug, Clone)]
+struct Table {
+    rows: Vec<Vec<String>>,
+    has_header: bool,
+}
+
+impl Table {
+    fn new() -> Self {
+        Self {
+            rows: Vec::new(),
+            has_header: false,
+        }
+    }
+
+    fn add_row(&mut self, row: Vec<String>) {
+        self.rows.push(row);
+    }
+
+    fn current_row_mut(&mut self) -> Option<&mut Vec<String>> {
+        self.rows.last_mut()
+    }
+
+    /// Calculate the maximum width for each column.
+    fn column_widths(&self) -> Vec<usize> {
+        if self.rows.is_empty() {
+            return Vec::new();
+        }
+
+        let max_cols = self.rows.iter().map(|r| r.len()).max().unwrap_or(0);
+        let mut widths = vec![0; max_cols];
+
+        for row in &self.rows {
+            for (i, cell) in row.iter().enumerate() {
+                let cell_width = UnicodeWidthStr::width(cell.as_str());
+                if cell_width > widths[i] {
+                    widths[i] = cell_width;
+                }
+            }
+        }
+
+        widths
+    }
+
+    /// Render the table to styled lines with Unicode borders.
+    fn render(&self, terminal_width: usize) -> Vec<LineContent> {
+        if self.rows.is_empty() {
+            return Vec::new();
+        }
+
+        let mut lines = Vec::new();
+        let col_widths = self.column_widths();
+
+        // Calculate total width and compress if needed
+        let total_width: usize = col_widths.iter().sum::<usize>() + (col_widths.len() + 1); // borders
+        let compressed_widths = if total_width > terminal_width {
+            self.compress_column_widths(&col_widths, terminal_width)
+        } else {
+            col_widths
+        };
+
+        // Top border
+        lines.push(self.render_border("┌", "┬", "┐", &compressed_widths));
+
+        // Header row (if exists)
+        let start_row = if self.has_header && !self.rows.is_empty() {
+            lines.push(self.render_row(&self.rows[0], &compressed_widths, true));
+            lines.push(self.render_border("├", "┼", "┤", &compressed_widths));
+            1
+        } else {
+            0
+        };
+
+        // Data rows
+        for (i, row) in self.rows.iter().enumerate().skip(start_row) {
+            lines.push(self.render_row(row, &compressed_widths, false));
+        }
+
+        // Bottom border
+        lines.push(self.render_border("└", "┴", "┘", &compressed_widths));
+
+        lines
+    }
+
+    fn compress_column_widths(&self, widths: &[usize], max_width: usize) -> Vec<usize> {
+        let current_total: usize = widths.iter().sum::<usize>() + widths.len() + 1;
+        if current_total <= max_width {
+            return widths.to_vec();
+        }
+
+        // Proportionally compress
+        let available = max_width.saturating_sub(widths.len() + 1);
+        let total_content: usize = widths.iter().sum();
+
+        if total_content == 0 {
+            return widths.to_vec();
+        }
+
+        widths
+            .iter()
+            .map(|&w| {
+                let proportion = w as f64 / total_content as f64;
+                (proportion * available as f64).floor() as usize
+            })
+            .collect()
+    }
+
+    fn render_border(&self, left: &str, middle: &str, right: &str, widths: &[usize]) -> LineContent {
+        let mut segments = Vec::new();
+        segments.push((left.to_string(), Style::default().fg(Color::DarkGray)));
+
+        for (i, &width) in widths.iter().enumerate() {
+            segments.push(("─".repeat(width), Style::default().fg(Color::DarkGray)));
+            if i < widths.len() - 1 {
+                segments.push((middle.to_string(), Style::default().fg(Color::DarkGray)));
+            }
+        }
+
+        segments.push((right.to_string(), Style::default().fg(Color::DarkGray)));
+        LineContent::Styled(segments)
+    }
+
+    fn render_row(&self, row: &[String], widths: &[usize], is_header: bool) -> LineContent {
+        let mut segments = Vec::new();
+        let style = if is_header {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        segments.push(("│".to_string(), Style::default().fg(Color::DarkGray)));
+
+        for (i, &width) in widths.iter().enumerate() {
+            let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
+            let cell_width = UnicodeWidthStr::width(cell);
+
+            if cell_width > width {
+                // Truncate
+                let truncated = self.truncate_to_width(cell, width.saturating_sub(3));
+                segments.push((format!(" {} ", truncated), style));
+            } else {
+                let padding = width.saturating_sub(cell_width);
+                segments.push((format!(" {}{} ", cell, " ".repeat(padding)), style));
+            }
+
+            if i < widths.len() - 1 {
+                segments.push(("│".to_string(), Style::default().fg(Color::DarkGray)));
+            }
+        }
+
+        segments.push(("│".to_string(), Style::default().fg(Color::DarkGray)));
+        LineContent::Styled(segments)
+    }
+
+    fn truncate_to_width(&self, text: &str, max_width: usize) -> String {
+        if max_width < 3 {
+            return ".".repeat(max_width);
+        }
+
+        let mut width = 0;
+        let mut result = String::new();
+
+        for ch in text.chars() {
+            let char_width = UnicodeWidthStr::width(ch.to_string().as_str());
+            if width + char_width > max_width - 3 {
+                break;
+            }
+            result.push(ch);
+            width += char_width;
+        }
+
+        result.push_str("...");
+        result
+    }
+}
 
 /// Convert XHTML content to styled lines for terminal display.
 pub fn xhtml_to_lines(
@@ -34,6 +211,15 @@ pub fn xhtml_to_lines(
 
     // Track which tags we should ignore content of
     let mut skip_depth: usize = 0;
+
+    // Table parsing state
+    let mut in_table = false;
+    let mut in_thead = false;
+    let mut in_row = false;
+    let mut in_cell = false;
+    let mut current_table = Table::new();
+    let mut current_cell_content = String::new();
+    let mut cell_is_header = false;
 
     let push = |cur: &mut Vec<(String, Style)>, text: &str, style: Style| {
         if !text.is_empty() {
@@ -167,6 +353,25 @@ pub fn xhtml_to_lines(
                             image_count += 1;
                         }
                     }
+                    "table" => {
+                        flush(&mut out, &mut cur);
+                        in_table = true;
+                        current_table = Table::new();
+                    }
+                    "thead" => {
+                        in_thead = true;
+                        current_table.has_header = true;
+                    }
+                    "tbody" => {}
+                    "tr" => {
+                        in_row = true;
+                        current_table.add_row(Vec::new());
+                    }
+                    "th" | "td" => {
+                        in_cell = true;
+                        cell_is_header = (tag == "th");
+                        current_cell_content.clear();
+                    }
                     _ => {} // Unknown tags: ignore but keep processing content
                 }
             }
@@ -275,6 +480,32 @@ pub fn xhtml_to_lines(
                         in_blockquote = false;
                         out.push(LineContent::Styled(Vec::new()));
                     }
+                    "table" => {
+                        in_table = false;
+                        // Render the table with a default terminal width of 80
+                        let terminal_width = crossterm::terminal::size()
+                            .map(|(w, _)| w as usize)
+                            .unwrap_or(80);
+                        let table_lines = current_table.render(terminal_width);
+                        for line in table_lines {
+                            out.push(line);
+                        }
+                        out.push(LineContent::Styled(Vec::new())); // Empty line after table
+                    }
+                    "thead" => {
+                        in_thead = false;
+                    }
+                    "tbody" => {}
+                    "tr" => {
+                        in_row = false;
+                    }
+                    "th" | "td" => {
+                        in_cell = false;
+                        // Add the collected cell content to the current row
+                        if let Some(row) = current_table.current_row_mut() {
+                            row.push(current_cell_content.trim().to_string());
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -287,10 +518,20 @@ pub fn xhtml_to_lines(
                 let text = e.unescape().unwrap_or_default().to_string();
                 // Skip pure whitespace between block elements
                 let trimmed = text.trim();
-                if trimmed.is_empty() && !in_pre && !in_code {
+                if trimmed.is_empty() && !in_pre && !in_code && !in_cell {
                     buf.clear();
                     continue;
                 }
+
+                // If inside a table cell, collect text for the cell
+                if in_cell {
+                    if in_cell {
+                        current_cell_content.push_str(&text);
+                    }
+                    buf.clear();
+                    continue;
+                }
+
                 let style = current_style(bold, italic, in_code, link, heading);
                 push(&mut cur, &text, style);
                 if link {
