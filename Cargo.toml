@@ -1,5 +1,5 @@
 [package]
-name = "theft-read"
+name = "tread"
 version = "0.1.0"
 edition = "2024"
 description = "A terminal-based reader for Markdown, EPUB and web content"

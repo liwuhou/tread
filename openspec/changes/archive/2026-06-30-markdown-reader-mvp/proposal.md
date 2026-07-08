@@ -1,10 +1,10 @@
 ## Why
 
-用户希望在终端环境中流畅阅读 Markdown 文档（小说、技术文档等），无需切换到 GUI 阅读器。当前缺少一个轻量、快速、支持 CJK 的终端 Markdown 阅读工具。本项目是 theft-read 终端阅读器的第一步，先实现 Markdown 格式，后续再扩展到 EPUB 和网页内容。
+用户希望在终端环境中流畅阅读 Markdown 文档（小说、技术文档等），无需切换到 GUI 阅读器。当前缺少一个轻量、快速、支持 CJK 的终端 Markdown 阅读工具。本项目是 tread 终端阅读器的第一步，先实现 Markdown 格式，后续再扩展到 EPUB 和网页内容。
 
 ## What Changes
 
-- **新建 Rust 项目** `theft-read`，二进制名称 `tread`
+- **新建 Rust 项目** `tread`，二进制名称 `tread`
 - **命令行入口**：接受 Markdown 文件路径（可选行号）作为参数
 - **Markdown 渲染**：将 Markdown 源文件解析为带样式的终端输出，支持标题（H1–H6）、粗体/斜体/删除线、行内代码、围栏代码块（带语言标签）、有序/无序列表、引用块、表格、分隔线、链接
 - **终端 TUI**：使用 ratatui 实现全屏渲染，包含内容区和底部状态栏

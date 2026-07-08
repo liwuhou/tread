@@ -1,6 +1,6 @@
 ## Context
 
-theft-read 已完成 Markdown 阅读器 MVP（`markdown-reader-mvp` 已归档）。当前 parser 能处理标题、粗体、代码块、列表、引用、表格等元素，但遇到 `Event::Start(Tag::Image)` 时直接忽略。用户需要一个完整的图片查看流程：检测 → 缓存 → 占位 → 打开。
+tread 已完成 Markdown 阅读器 MVP（`markdown-reader-mvp` 已归档）。当前 parser 能处理标题、粗体、代码块、列表、引用、表格等元素，但遇到 `Event::Start(Tag::Image)` 时直接忽略。用户需要一个完整的图片查看流程：检测 → 缓存 → 占位 → 打开。
 
 **约束**：
 - 不引入异步运行时（保持同步架构，与 MVP 一致）

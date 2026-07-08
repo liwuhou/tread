@@ -1,6 +1,6 @@
 ## Context
 
-theft-read 已完成 Markdown 阅读器 MVP 和图片预览功能。现在要添加 EPUB 格式支持。EPUB 本质是一个 ZIP 包，内含：
+tread 已完成 Markdown 阅读器 MVP 和图片预览功能。现在要添加 EPUB 格式支持。EPUB 本质是一个 ZIP 包，内含：
 - `META-INF/container.xml` → 指向 OPF 文件
 - `*.opf`（Package Document）→ manifest（资源清单）、spine（阅读顺序）、metadata（元数据）
 - XHTML 文件 → 正文内容

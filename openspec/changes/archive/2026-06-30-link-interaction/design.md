@@ -1,6 +1,6 @@
 ## Context
 
-theft-read 已完成 Markdown + EPUB + 图片预览。超链接 `![alt](url)` / `<a href="url">` 当前仅渲染样式，无法交互。用户需要：
+tread 已完成 Markdown + EPUB + 图片预览。超链接 `![alt](url)` / `<a href="url">` 当前仅渲染样式，无法交互。用户需要：
 - 外链（http/https）→ 系统浏览器打开
 - 内链（`chapter.xhtml#section`）→ EPUB 内章节跳转
 

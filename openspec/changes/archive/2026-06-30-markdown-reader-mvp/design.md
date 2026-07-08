@@ -1,6 +1,6 @@
 ## Context
 
-theft-read 是一个全新的 Rust 终端阅读器项目，当前仓库为空（仅含 `.claude` 配置和 OpenSpec 脚手架）。MVP 目标：实现一个可以在终端中流畅阅读 Markdown 文件的 CLI 工具。
+tread 是一个全新的 Rust 终端阅读器项目，当前仓库为空（仅含 `.claude` 配置和 OpenSpec 脚手架）。MVP 目标：实现一个可以在终端中流畅阅读 Markdown 文件的 CLI 工具。
 
 **约束**：
 - 使用 Rust 语言

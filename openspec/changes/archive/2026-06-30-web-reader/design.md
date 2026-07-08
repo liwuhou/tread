@@ -1,6 +1,6 @@
 ## Context
 
-theft-read 已完成 Markdown + EPUB + 图片预览 + 链接交互。现在要添加第三种内容来源：网页。核心挑战是网页 HTML 充满噪音（导航栏、广告、侧边栏），需要用 Readability 算法提取正文。
+tread 已完成 Markdown + EPUB + 图片预览 + 链接交互。现在要添加第三种内容来源：网页。核心挑战是网页 HTML 充满噪音（导航栏、广告、侧边栏），需要用 Readability 算法提取正文。
 
 **已有基础设施**：
 - `ureq` HTTP 客户端（图片下载时引入）

@@ -1,6 +1,6 @@
 ## Why
 
-用户希望 theft-read 不仅支持 Markdown，还能阅读 EPUB 格式的电子书。EPUB 是最主流的电子书格式，绝大多数正版/免费电子书都以 EPUB 分发。支持 EPUB 将使 theft-read 成为一个真正的通用终端阅读器。
+用户希望 tread 不仅支持 Markdown，还能阅读 EPUB 格式的电子书。EPUB 是最主流的电子书格式，绝大多数正版/免费电子书都以 EPUB 分发。支持 EPUB 将使 tread 成为一个真正的通用终端阅读器。
 
 ## What Changes
 
