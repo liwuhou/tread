@@ -37,7 +37,8 @@ pub struct WebProgress {
 // HTTP fetch
 // ─────────────────────────────────────────────────────────────────────────────
 
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0";
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0";
 
 /// Fetch HTML from a URL with Firefox User-Agent.
 pub fn fetch_html(url: &str) -> Result<String> {
@@ -423,7 +424,10 @@ mod tests {
 
     #[test]
     fn resolve_absolute_url() {
-        let result = resolve_image_url("https://cdn.example.com/pic.jpg", "https://example.com/article/");
+        let result = resolve_image_url(
+            "https://cdn.example.com/pic.jpg",
+            "https://example.com/article/",
+        );
         assert_eq!(result, "https://cdn.example.com/pic.jpg");
     }
 
@@ -441,7 +445,10 @@ mod tests {
 
     #[test]
     fn resolve_parent_relative() {
-        let result = resolve_image_url("../assets/pic.jpg", "https://example.com/articles/deep/page.html");
+        let result = resolve_image_url(
+            "../assets/pic.jpg",
+            "https://example.com/articles/deep/page.html",
+        );
         assert_eq!(result, "https://example.com/articles/assets/pic.jpg");
     }
 

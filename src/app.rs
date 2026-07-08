@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Style;
 
-use crate::image::{LineContent, ImageNode, LinkInfo, StyledSpan};
+use crate::image::{ImageNode, LineContent, LinkInfo, StyledSpan};
 
 /// Wrap content lines to fit within `max_width` columns.
 /// Image lines pass through unchanged (they occupy exactly one visual line).
@@ -143,8 +143,12 @@ fn split_words_preserve(s: &str) -> Vec<&str> {
             let start = i;
             let mut end = i;
             while let Some(&(idx, c)) = chars.peek() {
-                if c == ' ' || c == '\t' { break; }
-                if unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) >= 2 { break; }
+                if c == ' ' || c == '\t' {
+                    break;
+                }
+                if unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) >= 2 {
+                    break;
+                }
                 end = idx + c.len_utf8();
                 chars.next();
             }
@@ -209,9 +213,13 @@ impl FocusableItem {
 
     pub fn is_entire_line_on_line(&self, line_idx: usize) -> bool {
         match self {
-            Self::Image { line_idx: item_line } | Self::BlockLink { line_idx: item_line, .. } => {
-                *item_line == line_idx
+            Self::Image {
+                line_idx: item_line,
             }
+            | Self::BlockLink {
+                line_idx: item_line,
+                ..
+            } => *item_line == line_idx,
             Self::InlineLink { .. } => false,
         }
     }
@@ -314,13 +322,13 @@ impl App {
         // Strip fragment identifier
         let base_href = href.split('#').next().unwrap_or(href);
         // Exact match
-        self.spine_hrefs.iter().position(|h| h == base_href)
+        self.spine_hrefs
+            .iter()
+            .position(|h| h == base_href)
             .or_else(|| {
                 // Prefix/contains match
                 self.spine_hrefs.iter().position(|h| {
-                    h == base_href
-                        || h.ends_with(base_href)
-                        || base_href.ends_with(h)
+                    h == base_href || h.ends_with(base_href) || base_href.ends_with(h)
                 })
             })
     }
@@ -329,7 +337,9 @@ impl App {
         let old_height = self.height;
         self.height = Some(height);
         if old_height != Some(height) {
-            let term_width = crossterm::terminal::size().map(|(w, _)| w as usize).unwrap_or(80);
+            let term_width = crossterm::terminal::size()
+                .map(|(w, _)| w as usize)
+                .unwrap_or(80);
             self.wrapped_lines = wrap_lines(&self.lines, term_width);
             self.rebuild_focusable_positions();
             self.clamp_scroll();
@@ -374,10 +384,12 @@ impl App {
                                     url: current_link.url.clone(),
                                     is_external: current_link.is_external,
                                 });
-                                pending = Some((char_offset, char_offset + span_width, link.clone()));
+                                pending =
+                                    Some((char_offset, char_offset + span_width, link.clone()));
                             }
                             (None, Some(link)) => {
-                                pending = Some((char_offset, char_offset + span_width, link.clone()));
+                                pending =
+                                    Some((char_offset, char_offset + span_width, link.clone()));
                             }
                             (Some((start_offset, end_offset, current_link)), None) => {
                                 positions.push(FocusableItem::InlineLink {
@@ -547,14 +559,18 @@ impl App {
             }
 
             // EPUB: chapter navigation
-            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) && self.chapter_count > 0 => {
+            KeyCode::Char('n')
+                if key.modifiers.contains(KeyModifiers::CONTROL) && self.chapter_count > 0 =>
+            {
                 if self.current_chapter + 1 < self.chapter_count {
                     return Action::LoadChapter(self.current_chapter + 1, false);
                 } else {
                     self.status_message = Some("已是最后一章".to_string());
                 }
             }
-            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) && self.chapter_count > 0 => {
+            KeyCode::Char('p')
+                if key.modifiers.contains(KeyModifiers::CONTROL) && self.chapter_count > 0 =>
+            {
                 if self.current_chapter > 0 {
                     return Action::LoadChapter(self.current_chapter - 1, true);
                 } else {
@@ -627,7 +643,8 @@ impl App {
                                     Err(e) => self.status_message = Some(format!("打开失败: {e}")),
                                 }
                             } else {
-                                self.status_message = Some("图片未缓存或下载失败，无法打开".to_string());
+                                self.status_message =
+                                    Some("图片未缓存或下载失败，无法打开".to_string());
                             }
                         }
                         _ => {
@@ -722,14 +739,19 @@ mod tests {
     /// Build N styled lines, each containing "line_i".
     fn make_lines(n: usize) -> Vec<LineContent> {
         (0..n)
-            .map(|i| LineContent::Styled(vec![StyledSpan::new(format!("line_{i}"), Style::default())]))
+            .map(|i| {
+                LineContent::Styled(vec![StyledSpan::new(format!("line_{i}"), Style::default())])
+            })
             .collect()
     }
 
     fn make_lines_with_images(text_count: usize, image_count: usize) -> Vec<LineContent> {
         let mut lines = Vec::new();
         for i in 0..text_count {
-            lines.push(LineContent::Styled(vec![StyledSpan::new(format!("line_{i}"), Style::default())]));
+            lines.push(LineContent::Styled(vec![StyledSpan::new(
+                format!("line_{i}"),
+                Style::default(),
+            )]));
             if i < image_count {
                 lines.push(LineContent::Image(ImageNode {
                     alt: format!("img_{i}"),
@@ -776,7 +798,10 @@ mod tests {
 
     #[test]
     fn wrap_short_line_not_broken() {
-        let input = vec![LineContent::Styled(vec![StyledSpan::new("hello".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new(
+            "hello".to_string(),
+            Style::default(),
+        )])];
         let result = wrap_lines(&input, 80);
         assert_eq!(result.len(), 1);
         assert_eq!(plain(&result)[0], "hello");
@@ -784,9 +809,16 @@ mod tests {
 
     #[test]
     fn wrap_english_breaks_at_word_boundary() {
-        let input = vec![LineContent::Styled(vec![StyledSpan::new("hello world foo".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new(
+            "hello world foo".to_string(),
+            Style::default(),
+        )])];
         let result = wrap_lines(&input, 12);
-        assert!(result.len() >= 2, "expected at least 2 lines, got {}", result.len());
+        assert!(
+            result.len() >= 2,
+            "expected at least 2 lines, got {}",
+            result.len()
+        );
         let text = plain(&result);
         assert_eq!(text[0].trim(), "hello world");
         assert_eq!(text[1].trim(), "foo");
@@ -794,21 +826,30 @@ mod tests {
 
     #[test]
     fn wrap_cjk_breaks_at_character_boundary() {
-        let input = vec![LineContent::Styled(vec![StyledSpan::new("你好世界".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new(
+            "你好世界".to_string(),
+            Style::default(),
+        )])];
         let result = wrap_lines(&input, 4);
         assert!(result.len() >= 2, "expected at least 2 lines for CJK wrap");
     }
 
     #[test]
     fn wrap_mixed_cjk_english() {
-        let input = vec![LineContent::Styled(vec![StyledSpan::new("hi 你好".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new(
+            "hi 你好".to_string(),
+            Style::default(),
+        )])];
         let result = wrap_lines(&input, 6);
         assert!(result.len() >= 2, "expected mixed content to wrap");
     }
 
     #[test]
     fn wrap_long_word_force_breaks() {
-        let input = vec![LineContent::Styled(vec![StyledSpan::new("abcdefghijklmnop".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new(
+            "abcdefghijklmnop".to_string(),
+            Style::default(),
+        )])];
         let result = wrap_lines(&input, 8);
         assert!(result.len() >= 2, "expected force-break for long word");
     }
@@ -816,12 +857,19 @@ mod tests {
     #[test]
     fn wrap_preserves_style() {
         let bold = Style::default().add_modifier(Modifier::BOLD);
-        let input = vec![LineContent::Styled(vec![StyledSpan::new("hello world".to_string(), bold)])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new(
+            "hello world".to_string(),
+            bold,
+        )])];
         let result = wrap_lines(&input, 80);
         assert!(!result.is_empty());
         match &result[0] {
             LineContent::Styled(spans) => {
-                assert!(spans.iter().any(|span| span.style.add_modifier.contains(Modifier::BOLD)));
+                assert!(
+                    spans
+                        .iter()
+                        .any(|span| span.style.add_modifier.contains(Modifier::BOLD))
+                );
             }
             _ => panic!("expected styled line"),
         }
@@ -1144,7 +1192,10 @@ mod tests {
 
         app.handle_key(key(KeyCode::Tab));
         assert_eq!(app.focus_index, Some(0));
-        assert_eq!(app.focused_link(), Some(("https://example.com".to_string(), true)));
+        assert_eq!(
+            app.focused_link(),
+            Some(("https://example.com".to_string(), true))
+        );
     }
 
     #[test]
@@ -1153,12 +1204,19 @@ mod tests {
         let lines = vec![
             LineContent::Styled(vec![StyledSpan::new("text".to_string(), Style::default())]),
             LineContent::Image(crate::image::ImageNode {
-                alt: "img".to_string(), url: "img.png".to_string(),
-                local_path: None, id: 0, download_failed: false,
+                alt: "img".to_string(),
+                url: "img.png".to_string(),
+                local_path: None,
+                id: 0,
+                download_failed: false,
             }),
-            LineContent::Styled(vec![StyledSpan::new("more text".to_string(), Style::default())]),
+            LineContent::Styled(vec![StyledSpan::new(
+                "more text".to_string(),
+                Style::default(),
+            )]),
             LineContent::Link(crate::image::LinkNode {
-                text: "link".to_string(), url: "https://example.com".to_string(),
+                text: "link".to_string(),
+                url: "https://example.com".to_string(),
                 is_external: true,
             }),
         ];
@@ -1178,13 +1236,11 @@ mod tests {
 
     #[test]
     fn enter_on_external_link_opens_url() {
-        let lines = vec![
-            LineContent::Link(crate::image::LinkNode {
-                text: "visit".to_string(),
-                url: "https://example.com".to_string(),
-                is_external: true,
-            }),
-        ];
+        let lines = vec![LineContent::Link(crate::image::LinkNode {
+            text: "visit".to_string(),
+            url: "https://example.com".to_string(),
+            is_external: true,
+        })];
         let mut app = App::new(lines, "test.md".to_string());
         app.set_height(50);
         app.handle_key(key(KeyCode::Tab)); // focus the link
@@ -1197,13 +1253,31 @@ mod tests {
     fn chapter_for_href_finds_chapter() {
         let mut app = App::new(vec![], "test.epub".to_string());
         app.set_epub_mode(
-            None, 3, 0,
+            None,
+            3,
+            0,
             vec![
-                crate::epub::TocEntry { title: "第一章".to_string(), href: "ch1.xhtml".to_string(), level: 1 },
-                crate::epub::TocEntry { title: "第二章".to_string(), href: "ch2.xhtml".to_string(), level: 1 },
-                crate::epub::TocEntry { title: "第三章".to_string(), href: "ch3.xhtml".to_string(), level: 1 },
+                crate::epub::TocEntry {
+                    title: "第一章".to_string(),
+                    href: "ch1.xhtml".to_string(),
+                    level: 1,
+                },
+                crate::epub::TocEntry {
+                    title: "第二章".to_string(),
+                    href: "ch2.xhtml".to_string(),
+                    level: 1,
+                },
+                crate::epub::TocEntry {
+                    title: "第三章".to_string(),
+                    href: "ch3.xhtml".to_string(),
+                    level: 1,
+                },
             ],
-            vec!["ch1.xhtml".to_string(), "ch2.xhtml".to_string(), "ch3.xhtml".to_string()],
+            vec![
+                "ch1.xhtml".to_string(),
+                "ch2.xhtml".to_string(),
+                "ch3.xhtml".to_string(),
+            ],
         );
         assert_eq!(app.chapter_for_href("ch1.xhtml"), Some(0));
         assert_eq!(app.chapter_for_href("ch2.xhtml"), Some(1));
@@ -1213,18 +1287,22 @@ mod tests {
 
     #[test]
     fn internal_link_jumps_to_chapter() {
-        let lines = vec![
-            LineContent::Link(crate::image::LinkNode {
-                text: "跳转".to_string(),
-                url: "ch2.xhtml".to_string(),
-                is_external: false,
-            }),
-        ];
+        let lines = vec![LineContent::Link(crate::image::LinkNode {
+            text: "跳转".to_string(),
+            url: "ch2.xhtml".to_string(),
+            is_external: false,
+        })];
         let mut app = App::new(lines, "test.epub".to_string());
         app.set_epub_mode(
-            None, 3, 0,
+            None,
+            3,
+            0,
             vec![],
-            vec!["ch1.xhtml".to_string(), "ch2.xhtml".to_string(), "ch3.xhtml".to_string()],
+            vec![
+                "ch1.xhtml".to_string(),
+                "ch2.xhtml".to_string(),
+                "ch3.xhtml".to_string(),
+            ],
         );
         app.set_height(50);
         app.handle_key(key(KeyCode::Tab)); // focus link
@@ -1236,10 +1314,20 @@ mod tests {
     fn toc_navigation_and_jump() {
         let mut app = App::new(vec![], "test.epub".to_string());
         app.set_epub_mode(
-            None, 3, 0,
+            None,
+            3,
+            0,
             vec![
-                crate::epub::TocEntry { title: "第一章".to_string(), href: "ch1.xhtml".to_string(), level: 1 },
-                crate::epub::TocEntry { title: "第二章".to_string(), href: "ch2.xhtml".to_string(), level: 1 },
+                crate::epub::TocEntry {
+                    title: "第一章".to_string(),
+                    href: "ch1.xhtml".to_string(),
+                    level: 1,
+                },
+                crate::epub::TocEntry {
+                    title: "第二章".to_string(),
+                    href: "ch2.xhtml".to_string(),
+                    level: 1,
+                },
             ],
             vec!["ch1.xhtml".to_string(), "ch2.xhtml".to_string()],
         );

@@ -37,9 +37,7 @@ fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
     let h = app.height.unwrap_or(0) as usize;
 
     // Get current focus info
-    let focused_item = app
-        .focus_index
-        .and_then(|f| app.focusable_positions.get(f));
+    let focused_item = app.focus_index.and_then(|f| app.focusable_positions.get(f));
 
     let visible: Vec<Line> = app
         .wrapped_lines
@@ -89,7 +87,10 @@ fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
                     node.alt.clone()
                 };
 
-                let text = if node.local_path.is_none() && crate::image::is_remote_url(&node.url) && node.download_failed {
+                let text = if node.local_path.is_none()
+                    && crate::image::is_remote_url(&node.url)
+                    && node.download_failed
+                {
                     format!("[📷 {alt_display} ⚠ 下载失败]")
                 } else {
                     format!("[📷 {alt_display}]")
@@ -100,7 +101,10 @@ fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
                         .fg(Color::White)
                         .bg(Color::DarkGray)
                         .add_modifier(Modifier::BOLD)
-                } else if node.local_path.is_none() && crate::image::is_remote_url(&node.url) && node.download_failed {
+                } else if node.local_path.is_none()
+                    && crate::image::is_remote_url(&node.url)
+                    && node.download_failed
+                {
                     Style::default().fg(Color::Red)
                 } else {
                     Style::default().fg(Color::Cyan)
@@ -207,7 +211,9 @@ fn draw_toc(frame: &mut Frame, app: &App, area: Rect) {
             let indent = "  ".repeat(entry.level.saturating_sub(1));
             let marker = if i == app.toc_selection { "▶ " } else { "  " };
             let style = if i == app.toc_selection {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };

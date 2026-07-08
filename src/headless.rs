@@ -16,8 +16,8 @@ pub fn get_cookies_for_url(url: &str) -> Vec<cookie_scoop::Cookie> {
     use cookie_scoop::BrowserName;
 
     let opts = cookie_scoop::GetCookiesOptions::new(url)
-        .browsers(vec![BrowserName::Chrome])  // Explicitly specify Chrome
-        .timeout_ms(5000);  // 5 second timeout
+        .browsers(vec![BrowserName::Chrome]) // Explicitly specify Chrome
+        .timeout_ms(5000); // 5 second timeout
 
     // Run async function in a blocking tokio runtime
     let rt = match tokio::runtime::Runtime::new() {
@@ -56,12 +56,12 @@ pub fn cookies_to_header(cookies: &[(String, String)]) -> String {
 // HTTP fetch with cookies
 // ─────────────────────────────────────────────────────────────────────────────
 
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0";
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0";
 
 /// Fetch HTML from a URL, optionally with cookies.
 pub fn fetch_html_with_cookies(url: &str, cookies: &[(String, String)]) -> Result<String> {
-    let mut req = ureq::get(url)
-        .set("User-Agent", USER_AGENT);
+    let mut req = ureq::get(url).set("User-Agent", USER_AGENT);
 
     if !cookies.is_empty() {
         let header = cookies_to_header(cookies);
@@ -86,21 +86,15 @@ pub fn fetch_html_with_cookies(url: &str, cookies: &[(String, String)]) -> Resul
 fn get_chrome_user_data_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        dirs::home_dir().map(|home| {
-            home.join("Library/Application Support/Google/Chrome")
-        })
+        dirs::home_dir().map(|home| home.join("Library/Application Support/Google/Chrome"))
     }
     #[cfg(target_os = "linux")]
     {
-        dirs::home_dir().map(|home| {
-            home.join(".config/google-chrome")
-        })
+        dirs::home_dir().map(|home| home.join(".config/google-chrome"))
     }
     #[cfg(target_os = "windows")]
     {
-        dirs::data_local_dir().map(|data| {
-            data.join("Google/Chrome/User Data")
-        })
+        dirs::data_local_dir().map(|data| data.join("Google/Chrome/User Data"))
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
@@ -222,7 +216,7 @@ pub fn headless_fetch(url: &str, cookies: &[cookie_scoop::Cookie]) -> Result<Str
         Ok(b) => {
             eprintln!("  ✓ Chrome 启动成功");
             b
-        },
+        }
         Err(e) => {
             if using_user_profile {
                 eprintln!("  ⚠ 无法使用本地 Chrome profile（可能 Chrome 正在运行）: {e}");
@@ -241,8 +235,7 @@ pub fn headless_fetch(url: &str, cookies: &[cookie_scoop::Cookie]) -> Result<Str
         }
     };
 
-    let tab = browser.new_tab()
-        .context("创建浏览器标签页失败")?;
+    let tab = browser.new_tab().context("创建浏览器标签页失败")?;
 
     // Navigate to the URL
     tab.navigate_to(url)
@@ -319,8 +312,7 @@ pub fn headless_fetch(url: &str, cookies: &[cookie_scoop::Cookie]) -> Result<Str
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     // Extract rendered HTML
-    let html = tab.get_content()
-        .context("获取页面内容失败")?;
+    let html = tab.get_content().context("获取页面内容失败")?;
 
     Ok(html)
 }
@@ -503,7 +495,10 @@ mod tests {
         assert_eq!(cookie_params.len(), 2);
         assert_eq!(cookie_params[0].name, "session");
         assert_eq!(cookie_params[0].value, "abc123");
-        assert_eq!(cookie_params[0].url, Some("https://example.com".to_string()));
+        assert_eq!(
+            cookie_params[0].url,
+            Some("https://example.com".to_string())
+        );
         assert_eq!(cookie_params[1].name, "token");
         assert_eq!(cookie_params[1].value, "xyz789");
     }
@@ -511,14 +506,23 @@ mod tests {
     #[test]
     fn extract_domain_works() {
         assert_eq!(extract_domain("https://example.com/path"), "example.com");
-        assert_eq!(extract_domain("https://sub.example.com/"), "sub.example.com");
-        assert_eq!(extract_domain("http://localhost:8080/page"), "localhost:8080");
+        assert_eq!(
+            extract_domain("https://sub.example.com/"),
+            "sub.example.com"
+        );
+        assert_eq!(
+            extract_domain("http://localhost:8080/page"),
+            "localhost:8080"
+        );
     }
 
     #[test]
     fn strip_html_tags_works() {
         assert_eq!(strip_html_tags("<p>Hello</p>"), "Hello");
-        assert_eq!(strip_html_tags("<div class=\"x\"><span>World</span></div>"), "World");
+        assert_eq!(
+            strip_html_tags("<div class=\"x\"><span>World</span></div>"),
+            "World"
+        );
         assert_eq!(strip_html_tags("No tags"), "No tags");
     }
 
@@ -527,9 +531,7 @@ mod tests {
     #[test]
     fn save_and_load_session() {
         let domain = "test.tread.local";
-        let cookies = vec![
-            ("session".to_string(), "test123".to_string()),
-        ];
+        let cookies = vec![("session".to_string(), "test123".to_string())];
         save_session(domain, &cookies).unwrap();
 
         let loaded = load_session(domain);

@@ -122,8 +122,9 @@ fn run_web(url: &str, refresh: bool, interactive: bool) -> Result<()> {
                 // Standard HTTP fetch with cookies
                 // Try session cache first, then browser cookies
                 let domain = web::extract_domain(url);
-                let cookies = headless::load_session(&domain)
-                    .unwrap_or_else(|| headless::cookies_to_name_value(&headless::get_cookies_for_url(url)));
+                let cookies = headless::load_session(&domain).unwrap_or_else(|| {
+                    headless::cookies_to_name_value(&headless::get_cookies_for_url(url))
+                });
 
                 let result = headless::fetch_html_with_cookies(url, &cookies);
                 match result {
@@ -136,14 +137,13 @@ fn run_web(url: &str, refresh: bool, interactive: bool) -> Result<()> {
                 }
             };
 
-            let page = web::extract_content(&html, url)
-                .map_err(|e| {
-                    if interactive {
-                        anyhow::anyhow!("无法提取正文")
-                    } else {
-                        anyhow::anyhow!("无法提取正文，尝试使用 -i 模式: {e}")
-                    }
-                })?;
+            let page = web::extract_content(&html, url).map_err(|e| {
+                if interactive {
+                    anyhow::anyhow!("无法提取正文")
+                } else {
+                    anyhow::anyhow!("无法提取正文，尝试使用 -i 模式: {e}")
+                }
+            })?;
 
             // Save to cache
             let _ = web::save_web_cache(url, &page);
@@ -215,7 +215,11 @@ fn run_markdown(file_path: &PathBuf, filename: &str) -> Result<()> {
         .with_context(|| format!("无法打开文件: {}", file_path.display()))?;
 
     let initial_line = if env::args().len() > 2 {
-        env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0usize).saturating_sub(1)
+        env::args()
+            .nth(2)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0usize)
+            .saturating_sub(1)
     } else {
         0
     };
@@ -252,7 +256,13 @@ fn run_epub(file_path: &PathBuf, filename: &str) -> Result<()> {
     let lines = load_chapter_with_cache(&book, initial_chapter)?;
 
     let mut app = app::App::new(lines, display_title);
-    app.set_epub_mode(Some(book_hash.clone()), chapter_count, initial_chapter, toc, spine_hrefs);
+    app.set_epub_mode(
+        Some(book_hash.clone()),
+        chapter_count,
+        initial_chapter,
+        toc,
+        spine_hrefs,
+    );
     app.scroll_to_line(initial_scroll);
 
     // Terminal setup
@@ -270,10 +280,13 @@ fn run_epub(file_path: &PathBuf, filename: &str) -> Result<()> {
     let result = run_epub_loop(&mut terminal, &mut app, &book);
 
     // Save progress
-    let _ = epub::save_progress(&book_hash, &epub::ReadingProgress {
-        chapter: app.current_chapter,
-        scroll: app.scroll,
-    });
+    let _ = epub::save_progress(
+        &book_hash,
+        &epub::ReadingProgress {
+            chapter: app.current_chapter,
+            scroll: app.scroll,
+        },
+    );
 
     // Teardown
     crossterm::terminal::disable_raw_mode()?;
@@ -293,7 +306,10 @@ fn run_epub(file_path: &PathBuf, filename: &str) -> Result<()> {
 }
 
 /// Load a chapter, using cache if available.
-fn load_chapter_with_cache(book: &epub::EpubBook, chapter_idx: usize) -> Result<Vec<image::LineContent>> {
+fn load_chapter_with_cache(
+    book: &epub::EpubBook,
+    chapter_idx: usize,
+) -> Result<Vec<image::LineContent>> {
     let book_hash = book.book_hash();
 
     // Try cache first
@@ -303,9 +319,8 @@ fn load_chapter_with_cache(book: &epub::EpubBook, chapter_idx: usize) -> Result<
 
     // Cache miss: parse XHTML
     let html = book.read_chapter(chapter_idx)?;
-    let image_extractor = |href: &str| -> Option<std::path::PathBuf> {
-        book.extract_image(href).ok()
-    };
+    let image_extractor =
+        |href: &str| -> Option<std::path::PathBuf> { book.extract_image(href).ok() };
     let lines = xhtml::xhtml_to_lines(&html, Some(&image_extractor));
 
     // Merge paragraphs
@@ -333,10 +348,13 @@ fn run_tui(mut app: app::App) -> Result<()> {
 
     // Save progress before exit (EPUB only)
     if let Some(ref hash) = app.epub_hash {
-        let _ = epub::save_progress(hash, &epub::ReadingProgress {
-            chapter: app.current_chapter,
-            scroll: app.scroll,
-        });
+        let _ = epub::save_progress(
+            hash,
+            &epub::ReadingProgress {
+                chapter: app.current_chapter,
+                scroll: app.scroll,
+            },
+        );
     }
 
     // Terminal teardown
@@ -377,7 +395,9 @@ fn run_epub_loop(
                     app.replace_content(lines);
                     if scroll_to_bottom {
                         // Jump to bottom of previous chapter
-                        let max = app.total_lines().saturating_sub(app.height.unwrap_or(0) as usize);
+                        let max = app
+                            .total_lines()
+                            .saturating_sub(app.height.unwrap_or(0) as usize);
                         app.scroll_to_line(max);
                     }
                 }

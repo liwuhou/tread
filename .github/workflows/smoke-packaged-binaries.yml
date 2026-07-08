@@ -1,0 +1,91 @@
+name: Smoke packaged binaries
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  smoke-packaged-binaries:
+    name: smoke-packaged-binaries (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            artifact: aarch64-apple-darwin
+            runner: macos-14
+            archive: tread-aarch64-apple-darwin.tar.xz
+            archive_root: tread-aarch64-apple-darwin
+            exe: tread
+          - target: x86_64-apple-darwin
+            artifact: x86_64-apple-darwin
+            runner: macos-15-intel
+            archive: tread-x86_64-apple-darwin.tar.xz
+            archive_root: tread-x86_64-apple-darwin
+            exe: tread
+          - target: x86_64-unknown-linux-gnu
+            artifact: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            archive: tread-x86_64-unknown-linux-gnu.tar.xz
+            archive_root: tread-x86_64-unknown-linux-gnu
+            exe: tread
+          - target: aarch64-unknown-linux-gnu
+            artifact: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+            archive: tread-aarch64-unknown-linux-gnu.tar.xz
+            archive_root: tread-aarch64-unknown-linux-gnu
+            exe: tread
+          - target: x86_64-pc-windows-msvc
+            artifact: x86_64-pc-windows-msvc
+            runner: windows-2022
+            archive: tread-x86_64-pc-windows-msvc.zip
+            archive_root: tread-x86_64-pc-windows-msvc
+            exe: tread.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-build-local-${{ matrix.artifact }}
+          path: target/distrib
+          merge-multiple: true
+
+      - name: Extract Unix archive
+        if: ${{ !endsWith(matrix.archive, '.zip') }}
+        shell: bash
+        run: |
+          mkdir -p smoke
+          tar -xJf "target/distrib/${{ matrix.archive }}" -C smoke
+
+      - name: Extract Windows archive
+        if: ${{ endsWith(matrix.archive, '.zip') }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path smoke | Out-Null
+          Expand-Archive -Path "target/distrib/${{ matrix.archive }}" -DestinationPath smoke -Force
+
+      - name: Smoke test Unix binary startup
+        if: ${{ !endsWith(matrix.archive, '.zip') }}
+        shell: bash
+        run: |
+          chmod +x "smoke/${{ matrix.archive_root }}/${{ matrix.exe }}"
+          set +e
+          "smoke/${{ matrix.archive_root }}/${{ matrix.exe }}" >out.txt 2>&1
+          status=$?
+          set -e
+          cat out.txt
+          test "$status" -ne 0
+          grep -q "Usage: tread" out.txt
+
+      - name: Smoke test Windows binary startup
+        if: ${{ endsWith(matrix.archive, '.zip') }}
+        shell: pwsh
+        run: |
+          & "smoke/${{ matrix.archive_root }}/${{ matrix.exe }}" *> out.txt
+          $status = $LASTEXITCODE
+          Get-Content out.txt
+          if ($status -eq 0) { throw "Expected usage invocation to exit non-zero" }
+          if (-not (Select-String -Path out.txt -Pattern "Usage: tread" -Quiet)) { throw "Expected usage output" }

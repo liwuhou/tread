@@ -3,14 +3,24 @@ name = "tread"
 version = "0.1.0"
 edition = "2024"
 description = "A terminal-based reader for Markdown, EPUB and web content"
+license = "MIT"
+repository = "https://github.com/liwuhou/tread"
+homepage = "https://github.com/liwuhou/tread"
+readme = "README.md"
+keywords = ["terminal", "markdown", "epub", "reader", "tui"]
+categories = ["command-line-utilities", "text-processing"]
+include = [
+    "/src/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+]
 
 [[bin]]
 name = "tread"
 path = "src/main.rs"
 
-[[bin]]
-name = "test-cookies"
-path = "test-cookies.rs"
 
 [dependencies]
 anyhow = "1"
@@ -29,3 +39,8 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 unicode-width = "0.2"
 ureq = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

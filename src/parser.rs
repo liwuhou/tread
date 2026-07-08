@@ -1,7 +1,7 @@
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::image::{ImageNode, LineContent, StyledSpan, LinkInfo};
+use crate::image::{ImageNode, LineContent, LinkInfo, StyledSpan};
 
 /// Parse Markdown source into content lines (styled text + image nodes).
 pub fn parse_markdown(source: &str) -> Vec<LineContent> {
@@ -42,48 +42,54 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
 
     let mut cur: Vec<StyledSpan> = Vec::new();
 
-    let push = |cur: &mut Vec<StyledSpan>, text: &str, style: Style, link_info: Option<LinkInfo>| {
-        if !text.is_empty() {
-            match link_info {
-                Some(info) => cur.push(StyledSpan::with_link(text.to_string(), style, info)),
-                None => cur.push(StyledSpan::new(text.to_string(), style)),
-            }
-        }
-    };
-
-    let current_style =
-        |bold: bool, italic: bool, strikethrough: bool, link: bool, heading: Option<HeadingLevel>| {
-            let mut s = Style::default();
-            if let Some(level) = heading {
-                let color = match level {
-                    HeadingLevel::H1 => Color::Yellow,
-                    HeadingLevel::H2 => Color::Cyan,
-                    HeadingLevel::H3 => Color::Green,
-                    HeadingLevel::H4 => Color::Magenta,
-                    HeadingLevel::H5 => Color::Blue,
-                    HeadingLevel::H6 => Color::White,
-                };
-                s = s.fg(color).add_modifier(Modifier::BOLD);
-                if let HeadingLevel::H1 = level {
-                    s = s.add_modifier(Modifier::UNDERLINED);
+    let push =
+        |cur: &mut Vec<StyledSpan>, text: &str, style: Style, link_info: Option<LinkInfo>| {
+            if !text.is_empty() {
+                match link_info {
+                    Some(info) => cur.push(StyledSpan::with_link(text.to_string(), style, info)),
+                    None => cur.push(StyledSpan::new(text.to_string(), style)),
                 }
             }
-            if link {
-                s = s.fg(Color::Blue).add_modifier(Modifier::UNDERLINED);
-            }
-            if bold {
-                s = s.add_modifier(Modifier::BOLD);
-            }
-            if italic {
-                s = s.add_modifier(Modifier::ITALIC);
-            }
-            if strikethrough {
-                s = s.add_modifier(Modifier::CROSSED_OUT);
-            }
-            s
         };
 
-    let terminal_width = crossterm::terminal::size().map(|(w, _)| w as usize).unwrap_or(80);
+    let current_style = |bold: bool,
+                         italic: bool,
+                         strikethrough: bool,
+                         link: bool,
+                         heading: Option<HeadingLevel>| {
+        let mut s = Style::default();
+        if let Some(level) = heading {
+            let color = match level {
+                HeadingLevel::H1 => Color::Yellow,
+                HeadingLevel::H2 => Color::Cyan,
+                HeadingLevel::H3 => Color::Green,
+                HeadingLevel::H4 => Color::Magenta,
+                HeadingLevel::H5 => Color::Blue,
+                HeadingLevel::H6 => Color::White,
+            };
+            s = s.fg(color).add_modifier(Modifier::BOLD);
+            if let HeadingLevel::H1 = level {
+                s = s.add_modifier(Modifier::UNDERLINED);
+            }
+        }
+        if link {
+            s = s.fg(Color::Blue).add_modifier(Modifier::UNDERLINED);
+        }
+        if bold {
+            s = s.add_modifier(Modifier::BOLD);
+        }
+        if italic {
+            s = s.add_modifier(Modifier::ITALIC);
+        }
+        if strikethrough {
+            s = s.add_modifier(Modifier::CROSSED_OUT);
+        }
+        s
+    };
+
+    let terminal_width = crossterm::terminal::size()
+        .map(|(w, _)| w as usize)
+        .unwrap_or(80);
     let max_width = terminal_width.max(10);
 
     let flush_line = |out: &mut Vec<LineContent>, cur: &mut Vec<StyledSpan>| {
@@ -426,7 +432,11 @@ mod tests {
             .filter(|span| span.text.contains("bold"))
             .collect();
         assert!(!all_bold.is_empty());
-        assert!(all_bold.iter().any(|span| span.style.add_modifier.contains(Modifier::BOLD)));
+        assert!(
+            all_bold
+                .iter()
+                .any(|span| span.style.add_modifier.contains(Modifier::BOLD))
+        );
     }
 
     #[test]
@@ -438,7 +448,11 @@ mod tests {
             .filter(|span| span.text.contains("italic"))
             .collect();
         assert!(!all_it.is_empty());
-        assert!(all_it.iter().any(|span| span.style.add_modifier.contains(Modifier::ITALIC)));
+        assert!(
+            all_it
+                .iter()
+                .any(|span| span.style.add_modifier.contains(Modifier::ITALIC))
+        );
     }
 
     #[test]
@@ -450,7 +464,11 @@ mod tests {
             .filter(|span| span.text.contains("struck"))
             .collect();
         assert!(!all_st.is_empty());
-        assert!(all_st.iter().any(|span| span.style.add_modifier.contains(Modifier::CROSSED_OUT)));
+        assert!(
+            all_st
+                .iter()
+                .any(|span| span.style.add_modifier.contains(Modifier::CROSSED_OUT))
+        );
     }
 
     #[test]
@@ -462,7 +480,11 @@ mod tests {
             .filter(|span| span.text.contains("code"))
             .collect();
         assert!(!code_spans.is_empty());
-        assert!(code_spans.iter().any(|span| span.style.fg == Some(Color::Green)));
+        assert!(
+            code_spans
+                .iter()
+                .any(|span| span.style.fg == Some(Color::Green))
+        );
     }
 
     #[test]
@@ -474,8 +496,16 @@ mod tests {
             .filter(|span| span.text.contains("click"))
             .collect();
         assert!(!link_spans.is_empty());
-        assert!(link_spans.iter().any(|span| span.style.fg == Some(Color::Blue)));
-        assert!(link_spans.iter().any(|span| span.style.add_modifier.contains(Modifier::UNDERLINED)));
+        assert!(
+            link_spans
+                .iter()
+                .any(|span| span.style.fg == Some(Color::Blue))
+        );
+        assert!(
+            link_spans
+                .iter()
+                .any(|span| span.style.add_modifier.contains(Modifier::UNDERLINED))
+        );
     }
 
     #[test]
@@ -512,8 +542,10 @@ mod tests {
         let outer_line = text.iter().find(|l| l.contains("outer")).unwrap();
         let outer_indent = outer_line.len() - outer_line.trim_start().len();
         let inner_indent = inner_line.len() - inner_line.trim_start().len();
-        assert!(inner_indent > outer_indent,
-            "outer={outer_line:?} (indent={outer_indent}), inner={inner_line:?} (indent={inner_indent})");
+        assert!(
+            inner_indent > outer_indent,
+            "outer={outer_line:?} (indent={outer_indent}), inner={inner_line:?} (indent={inner_indent})"
+        );
     }
 
     #[test]

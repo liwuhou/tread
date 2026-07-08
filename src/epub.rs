@@ -67,8 +67,7 @@ impl EpubBook {
     pub fn open(path: &Path) -> Result<Self> {
         let file = fs::File::open(path)
             .with_context(|| format!("无法打开 EPUB 文件: {}", path.display()))?;
-        let mut archive = ZipArchive::new(file)
-            .with_context(|| "无法解析 EPUB ZIP 结构")?;
+        let mut archive = ZipArchive::new(file).with_context(|| "无法解析 EPUB ZIP 结构")?;
 
         let opf_path = parse_container(&mut archive)?;
         let opf_dir = parent_dir(&opf_path);
@@ -93,7 +92,14 @@ impl EpubBook {
             Vec::new()
         };
 
-        Ok(EpubBook { metadata, manifest, spine, toc, opf_dir, file_path: path.to_path_buf() })
+        Ok(EpubBook {
+            metadata,
+            manifest,
+            spine,
+            toc,
+            opf_dir,
+            file_path: path.to_path_buf(),
+        })
     }
 
     pub fn book_hash(&self) -> String {
@@ -103,7 +109,11 @@ impl EpubBook {
 
     pub fn read_chapter(&self, chapter_index: usize) -> Result<String> {
         if chapter_index >= self.spine.len() {
-            bail!("章节索引超出范围: {} >= {}", chapter_index, self.spine.len());
+            bail!(
+                "章节索引超出范围: {} >= {}",
+                chapter_index,
+                self.spine.len()
+            );
         }
         let chapter_path = resolve_href(&self.opf_dir, &self.spine[chapter_index].href);
         let file = fs::File::open(&self.file_path)?;
@@ -116,8 +126,12 @@ impl EpubBook {
         let cache_dir = epub_cache_dir(&self.book_hash());
         fs::create_dir_all(&cache_dir)?;
         let dest = cache_dir.join(&image_path);
-        if dest.exists() { return Ok(dest); }
-        if let Some(parent) = dest.parent() { fs::create_dir_all(parent)?; }
+        if dest.exists() {
+            return Ok(dest);
+        }
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let file = fs::File::open(&self.file_path)?;
         let mut archive = ZipArchive::new(file)?;
         let data = read_zip_file_bytes(&mut archive, &image_path)?;
@@ -125,7 +139,9 @@ impl EpubBook {
         Ok(dest)
     }
 
-    pub fn chapter_count(&self) -> usize { self.spine.len() }
+    pub fn chapter_count(&self) -> usize {
+        self.spine.len()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,18 +149,27 @@ impl EpubBook {
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub fn epub_cache_dir(book_hash: &str) -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
-        .join(".tread").join("cache").join("epub").join(book_hash)
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".tread")
+        .join("cache")
+        .join("epub")
+        .join(book_hash)
 }
 
 pub fn progress_path(book_hash: &str) -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
-        .join(".tread").join("progress").join(format!("{book_hash}.json"))
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".tread")
+        .join("progress")
+        .join(format!("{book_hash}.json"))
 }
 
 pub fn save_progress(book_hash: &str, progress: &ReadingProgress) -> Result<()> {
     let path = progress_path(book_hash);
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(path, serde_json::to_string_pretty(progress)?)?;
     Ok(())
 }
@@ -183,7 +208,9 @@ fn parse_container(archive: &mut ZipArchive<fs::File>) -> Result<String> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Empty(ref e)) if e.local_name().as_ref() == b"rootfile" => {
                 let path = attr_str(e, b"full-path");
-                if !path.is_empty() { return Ok(path); }
+                if !path.is_empty() {
+                    return Ok(path);
+                }
             }
             Ok(Event::Eof) => break,
             _ => {}
@@ -193,7 +220,14 @@ fn parse_container(archive: &mut ZipArchive<fs::File>) -> Result<String> {
     bail!("container.xml 中未找到 rootfile")
 }
 
-fn parse_opf(content: &str) -> Result<(EpubMetadata, HashMap<String, ManifestItem>, Vec<SpineItem>, Option<String>)> {
+fn parse_opf(
+    content: &str,
+) -> Result<(
+    EpubMetadata,
+    HashMap<String, ManifestItem>,
+    Vec<SpineItem>,
+    Option<String>,
+)> {
     let mut reader = Reader::from_str(content);
     let mut buf = Vec::new();
     let mut metadata = EpubMetadata::default();
@@ -214,15 +248,26 @@ fn parse_opf(content: &str) -> Result<(EpubMetadata, HashMap<String, ManifestIte
                     "spine" => {
                         in_spine = true;
                         let toc = attr_str(e, b"toc");
-                        if !toc.is_empty() { ncx_href = Some(toc); }
+                        if !toc.is_empty() {
+                            ncx_href = Some(toc);
+                        }
                     }
                     "item" if !in_spine => {
                         let id = attr_str(e, b"id");
                         let href = attr_str(e, b"href");
                         let mt = attr_str(e, b"media-type");
                         if !id.is_empty() {
-                            if mt.contains("ncx") || mt.contains("dtbncx") { ncx_href = Some(href.clone()); }
-                            manifest.insert(id.clone(), ManifestItem { id, href, media_type: mt });
+                            if mt.contains("ncx") || mt.contains("dtbncx") {
+                                ncx_href = Some(href.clone());
+                            }
+                            manifest.insert(
+                                id.clone(),
+                                ManifestItem {
+                                    id,
+                                    href,
+                                    media_type: mt,
+                                },
+                            );
                         }
                     }
                     _ => {}
@@ -236,14 +281,26 @@ fn parse_opf(content: &str) -> Result<(EpubMetadata, HashMap<String, ManifestIte
                         let href = attr_str(e, b"href");
                         let mt = attr_str(e, b"media-type");
                         if !id.is_empty() {
-                            if mt.contains("ncx") || mt.contains("dtbncx") { ncx_href = Some(href.clone()); }
-                            manifest.insert(id.clone(), ManifestItem { id, href, media_type: mt });
+                            if mt.contains("ncx") || mt.contains("dtbncx") {
+                                ncx_href = Some(href.clone());
+                            }
+                            manifest.insert(
+                                id.clone(),
+                                ManifestItem {
+                                    id,
+                                    href,
+                                    media_type: mt,
+                                },
+                            );
                         }
                     }
                     "itemref" if in_spine => {
                         let idref = attr_str(e, b"idref");
                         if !idref.is_empty() {
-                            let href = manifest.get(&idref).map(|m| m.href.clone()).unwrap_or_default();
+                            let href = manifest
+                                .get(&idref)
+                                .map(|m| m.href.clone())
+                                .unwrap_or_default();
                             spine.push(SpineItem { idref, href });
                         }
                     }
@@ -287,50 +344,44 @@ fn parse_ncx(content: &str) -> Vec<TocEntry> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) => {
-                match local_name_owned(e).as_str() {
-                    "navPoint" => {
-                        in_navpoint = true;
-                        navpoint_depth += 1;
-                        current_title.clear();
-                        current_href.clear();
-                    }
-                    "navLabel" if in_navpoint => in_navlabel = true,
-                    _ => {}
+            Ok(Event::Start(ref e)) => match local_name_owned(e).as_str() {
+                "navPoint" => {
+                    in_navpoint = true;
+                    navpoint_depth += 1;
+                    current_title.clear();
+                    current_href.clear();
                 }
-            }
-            Ok(Event::Empty(ref e)) => {
-                match local_name_owned(e).as_str() {
-                    "content" if in_navpoint => {
-                        let src = attr_str(e, b"src");
-                        current_href = src.split('#').next().unwrap_or(&src).to_string();
-                    }
-                    _ => {}
+                "navLabel" if in_navpoint => in_navlabel = true,
+                _ => {}
+            },
+            Ok(Event::Empty(ref e)) => match local_name_owned(e).as_str() {
+                "content" if in_navpoint => {
+                    let src = attr_str(e, b"src");
+                    current_href = src.split('#').next().unwrap_or(&src).to_string();
                 }
-            }
+                _ => {}
+            },
             Ok(Event::Text(ref e)) if in_navlabel => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if !text.trim().is_empty() && current_title.is_empty() {
                     current_title = text.trim().to_string();
                 }
             }
-            Ok(Event::End(ref e)) => {
-                match local_name_end_owned(e).as_str() {
-                    "navPoint" => {
-                        if !current_title.is_empty() {
-                            toc.push(TocEntry {
-                                title: current_title.clone(),
-                                href: current_href.clone(),
-                                level: navpoint_depth,
-                            });
-                        }
-                        navpoint_depth -= 1;
-                        in_navpoint = navpoint_depth > 0;
+            Ok(Event::End(ref e)) => match local_name_end_owned(e).as_str() {
+                "navPoint" => {
+                    if !current_title.is_empty() {
+                        toc.push(TocEntry {
+                            title: current_title.clone(),
+                            href: current_href.clone(),
+                            level: navpoint_depth,
+                        });
                     }
-                    "navLabel" => in_navlabel = false,
-                    _ => {}
+                    navpoint_depth -= 1;
+                    in_navpoint = navpoint_depth > 0;
                 }
-            }
+                "navLabel" => in_navlabel = false,
+                _ => {}
+            },
             Ok(Event::Eof) => break,
             _ => {}
         }
@@ -345,7 +396,8 @@ fn read_zip_file(archive: &mut ZipArchive<fs::File>, path: &str) -> Result<Strin
 }
 
 fn read_zip_file_bytes(archive: &mut ZipArchive<fs::File>, path: &str) -> Result<Vec<u8>> {
-    let mut file = archive.by_name(path)
+    let mut file = archive
+        .by_name(path)
         .with_context(|| format!("ZIP 中未找到文件: {path}"))?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
@@ -353,13 +405,19 @@ fn read_zip_file_bytes(archive: &mut ZipArchive<fs::File>, path: &str) -> Result
 }
 
 fn resolve_href(base_dir: &str, href: &str) -> String {
-    if href.starts_with('/') { return href[1..].to_string(); }
-    if base_dir.is_empty() { return href.to_string(); }
+    if href.starts_with('/') {
+        return href[1..].to_string();
+    }
+    if base_dir.is_empty() {
+        return href.to_string();
+    }
     format!("{base_dir}/{href}")
 }
 
 fn parent_dir(path: &str) -> String {
-    path.rfind('/').map(|p| path[..p].to_string()).unwrap_or_default()
+    path.rfind('/')
+        .map(|p| path[..p].to_string())
+        .unwrap_or_default()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,7 +431,10 @@ mod tests {
 
     static CTR: AtomicUsize = AtomicUsize::new(0);
     fn epub_path() -> PathBuf {
-        std::env::temp_dir().join(format!("tread_epub_{}.epub", CTR.fetch_add(1, Ordering::SeqCst)))
+        std::env::temp_dir().join(format!(
+            "tread_epub_{}.epub",
+            CTR.fetch_add(1, Ordering::SeqCst)
+        ))
     }
 
     fn create_test_epub(path: &Path) {
@@ -406,7 +467,8 @@ mod tests {
 
     #[test]
     fn parse_container_finds_opf() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert_eq!(book.opf_dir, "OEBPS");
         fs::remove_file(&p).ok();
@@ -414,7 +476,8 @@ mod tests {
 
     #[test]
     fn parse_metadata() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert_eq!(book.metadata.title, "测试书籍");
         assert_eq!(book.metadata.author, "测试作者");
@@ -423,7 +486,8 @@ mod tests {
 
     #[test]
     fn parse_spine() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert_eq!(book.spine.len(), 2);
         assert_eq!(book.spine[0].idref, "ch1");
@@ -432,7 +496,8 @@ mod tests {
 
     #[test]
     fn parse_ncx_toc() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert_eq!(book.toc.len(), 2, "TOC should have 2 entries");
         assert_eq!(book.toc[0].title, "第一章：开始");
@@ -442,7 +507,8 @@ mod tests {
 
     #[test]
     fn read_chapter_content() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         let ch1 = book.read_chapter(0).unwrap();
         assert!(ch1.contains("第一章：开始"));
@@ -451,7 +517,8 @@ mod tests {
 
     #[test]
     fn read_chapter_out_of_bounds() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert!(book.read_chapter(99).is_err());
         fs::remove_file(&p).ok();
@@ -459,7 +526,8 @@ mod tests {
 
     #[test]
     fn chapter_count() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert_eq!(book.chapter_count(), 2);
         fs::remove_file(&p).ok();
@@ -467,7 +535,8 @@ mod tests {
 
     #[test]
     fn book_hash_is_deterministic() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         assert_eq!(book.book_hash().len(), 16);
         assert_eq!(book.book_hash(), book.book_hash());
@@ -476,7 +545,8 @@ mod tests {
 
     #[test]
     fn extract_image_from_epub() {
-        let p = epub_path(); create_test_epub(&p);
+        let p = epub_path();
+        create_test_epub(&p);
         let book = EpubBook::open(&p).unwrap();
         let img = book.extract_image("images/cover.png").unwrap();
         assert!(img.exists());
@@ -487,7 +557,14 @@ mod tests {
     #[test]
     fn progress_save_and_load() {
         let h = "test_epub_progress_hash";
-        save_progress(h, &ReadingProgress { chapter: 3, scroll: 42 }).unwrap();
+        save_progress(
+            h,
+            &ReadingProgress {
+                chapter: 3,
+                scroll: 42,
+            },
+        )
+        .unwrap();
         let loaded = load_progress(h).unwrap();
         assert_eq!(loaded.chapter, 3);
         assert_eq!(loaded.scroll, 42);
@@ -584,7 +661,10 @@ impl From<&LineContent> for CachedLine {
             LineContent::Image(node) => CachedLine::Image {
                 alt: node.alt.clone(),
                 url: node.url.clone(),
-                local_path: node.local_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                local_path: node
+                    .local_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
                 id: node.id,
                 download_failed: node.download_failed,
             },
@@ -625,22 +705,28 @@ impl From<&CachedLine> for LineContent {
                 }
             }
             CachedLine::Empty => LineContent::Styled(Vec::new()),
-            CachedLine::Image { alt, url, local_path, id, download_failed } => {
-                LineContent::Image(ImageNode {
-                    alt: alt.clone(),
-                    url: url.clone(),
-                    local_path: local_path.as_ref().map(PathBuf::from),
-                    id: *id,
-                    download_failed: *download_failed,
-                })
-            }
-            CachedLine::Link { text, url, is_external } => {
-                LineContent::Link(crate::image::LinkNode {
-                    text: text.clone(),
-                    url: url.clone(),
-                    is_external: *is_external,
-                })
-            }
+            CachedLine::Image {
+                alt,
+                url,
+                local_path,
+                id,
+                download_failed,
+            } => LineContent::Image(ImageNode {
+                alt: alt.clone(),
+                url: url.clone(),
+                local_path: local_path.as_ref().map(PathBuf::from),
+                id: *id,
+                download_failed: *download_failed,
+            }),
+            CachedLine::Link {
+                text,
+                url,
+                is_external,
+            } => LineContent::Link(crate::image::LinkNode {
+                text: text.clone(),
+                url: url.clone(),
+                is_external: *is_external,
+            }),
         }
     }
 }
@@ -650,12 +736,15 @@ impl From<&CachedLine> for LineContent {
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn chapter_cache_path(book_hash: &str, chapter_idx: usize) -> PathBuf {
-    epub_cache_dir(book_hash)
-        .join(format!("chapter_{chapter_idx}.json"))
+    epub_cache_dir(book_hash).join(format!("chapter_{chapter_idx}.json"))
 }
 
 /// Save parsed chapter content to cache.
-pub fn save_chapter_cache(book_hash: &str, chapter_idx: usize, lines: &[LineContent]) -> Result<()> {
+pub fn save_chapter_cache(
+    book_hash: &str,
+    chapter_idx: usize,
+    lines: &[LineContent],
+) -> Result<()> {
     let path = chapter_cache_path(book_hash, chapter_idx);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -727,7 +816,8 @@ pub fn merge_paragraphs(lines: Vec<LineContent>) -> Vec<LineContent> {
                 while j < lines.len() && matches!(&kinds[j], LineKind::Empty) {
                     j += 1;
                 }
-                let has_content_after = (j < lines.len()) && matches!(&kinds[j], LineKind::Content(_) | LineKind::NonText);
+                let has_content_after = (j < lines.len())
+                    && matches!(&kinds[j], LineKind::Content(_) | LineKind::NonText);
                 if has_content_before && has_content_after {
                     result.push(LineContent::Styled(Vec::new()));
                 }
@@ -757,7 +847,10 @@ pub fn merge_paragraphs(lines: Vec<LineContent>) -> Vec<LineContent> {
                             // Merge: add next paragraph's spans to current
                             if let LineContent::Styled(ref next_spans) = lines[j] {
                                 // Add a space between merged paragraphs
-                                merged_spans.push(crate::image::StyledSpan::new(" ".to_string(), ratatui::style::Style::default()));
+                                merged_spans.push(crate::image::StyledSpan::new(
+                                    " ".to_string(),
+                                    ratatui::style::Style::default(),
+                                ));
                                 merged_spans.extend(next_spans.iter().cloned());
                                 merged_text.push(' ');
                                 merged_text.push_str(next_text);
@@ -796,14 +889,22 @@ fn should_merge_paragraphs(prev_text: &str, next_text: &str) -> bool {
     let last_char = prev_trimmed.chars().last().unwrap_or(' ');
     let continues = matches!(
         last_char,
-        '，' | ',' | '、' | '：' | ':' | '\u{201c}' | '\u{201d}' | '）' | ')' | ';' | '；' | '—' | '…'
+        '，' | ','
+            | '、'
+            | '：'
+            | ':'
+            | '\u{201c}'
+            | '\u{201d}'
+            | '）'
+            | ')'
+            | ';'
+            | '；'
+            | '—'
+            | '…'
     );
 
     // Check if previous ends with "sentence ending" punctuation
-    let ends_sentence = matches!(
-        last_char,
-        '。' | '！' | '？' | '.' | '!' | '?'
-    );
+    let ends_sentence = matches!(last_char, '。' | '！' | '？' | '.' | '!' | '?');
 
     // Check if next starts with "new paragraph" markers
     let new_para = next_trimmed.starts_with('第')         // 第一章
@@ -814,7 +915,10 @@ fn should_merge_paragraphs(prev_text: &str, next_text: &str) -> bool {
         || next_trimmed.starts_with('(');
 
     // Check if next starts with uppercase (new sentence in English)
-    let starts_upper = next_trimmed.chars().next().map_or(false, |c| c.is_uppercase());
+    let starts_upper = next_trimmed
+        .chars()
+        .next()
+        .map_or(false, |c| c.is_uppercase());
 
     // Decision:
     // - If continues (ends with comma etc.) AND next doesn't start new para → merge
@@ -848,7 +952,10 @@ mod merge_tests {
     use ratatui::style::Style;
 
     fn styled(text: &str) -> LineContent {
-        LineContent::Styled(vec![crate::image::StyledSpan::new(text.to_string(), Style::default())])
+        LineContent::Styled(vec![crate::image::StyledSpan::new(
+            text.to_string(),
+            Style::default(),
+        )])
     }
 
     fn empty() -> LineContent {
@@ -879,11 +986,18 @@ mod merge_tests {
     fn consecutive_empties_collapsed() {
         let lines = vec![
             styled("第一段"),
-            empty(), empty(), empty(), empty(),
+            empty(),
+            empty(),
+            empty(),
+            empty(),
             styled("第二段"),
         ];
         let merged = merge_paragraphs(lines);
-        assert_eq!(count_empties(&merged), 1, "should have exactly 1 empty line");
+        assert_eq!(
+            count_empties(&merged),
+            1,
+            "should have exactly 1 empty line"
+        );
         let texts = text_of(&merged);
         assert_eq!(texts, vec!["第一段", "第二段"]);
     }
@@ -903,14 +1017,14 @@ mod merge_tests {
 
     #[test]
     fn sentence_ending_stays_separate() {
-        let lines = vec![
-            styled("这是第一句话。"),
-            empty(),
-            styled("这是第二句话。"),
-        ];
+        let lines = vec![styled("这是第一句话。"), empty(), styled("这是第二句话。")];
         let merged = merge_paragraphs(lines);
         let texts = text_of(&merged);
-        assert_eq!(texts.len(), 2, "sentence-ending paragraphs should stay separate");
+        assert_eq!(
+            texts.len(),
+            2,
+            "sentence-ending paragraphs should stay separate"
+        );
     }
 
     #[test]
@@ -927,11 +1041,7 @@ mod merge_tests {
 
     #[test]
     fn no_ending_punctuation_merges() {
-        let lines = vec![
-            styled("从何处下手"),
-            empty(),
-            styled("高境界也不难"),
-        ];
+        let lines = vec![styled("从何处下手"), empty(), styled("高境界也不难")];
         let merged = merge_paragraphs(lines);
         let texts = text_of(&merged);
         // "从何处下手" has no ending punctuation → likely mid-sentence cut → merge

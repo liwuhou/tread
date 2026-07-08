@@ -3,7 +3,7 @@ use quick_xml::reader::Reader;
 use ratatui::style::{Color, Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
-use crate::image::{ImageNode, LineContent, StyledSpan, LinkInfo};
+use crate::image::{ImageNode, LineContent, LinkInfo, StyledSpan};
 
 /// Represents a parsed HTML table.
 #[derive(Debug, Clone)]
@@ -112,18 +112,36 @@ impl Table {
             .collect()
     }
 
-    fn render_border(&self, left: &str, middle: &str, right: &str, widths: &[usize]) -> LineContent {
+    fn render_border(
+        &self,
+        left: &str,
+        middle: &str,
+        right: &str,
+        widths: &[usize],
+    ) -> LineContent {
         let mut segments: Vec<StyledSpan> = Vec::new();
-        segments.push(StyledSpan::new(left.to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new(
+            left.to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
 
         for (i, &width) in widths.iter().enumerate() {
-            segments.push(StyledSpan::new("─".repeat(width), Style::default().fg(Color::DarkGray)));
+            segments.push(StyledSpan::new(
+                "─".repeat(width),
+                Style::default().fg(Color::DarkGray),
+            ));
             if i < widths.len() - 1 {
-                segments.push(StyledSpan::new(middle.to_string(), Style::default().fg(Color::DarkGray)));
+                segments.push(StyledSpan::new(
+                    middle.to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
         }
 
-        segments.push(StyledSpan::new(right.to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new(
+            right.to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
         LineContent::Styled(segments)
     }
 
@@ -135,7 +153,10 @@ impl Table {
             Style::default()
         };
 
-        segments.push(StyledSpan::new("│".to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new(
+            "│".to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
 
         for (i, &width) in widths.iter().enumerate() {
             let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
@@ -147,15 +168,24 @@ impl Table {
                 segments.push(StyledSpan::new(format!(" {} ", truncated), style));
             } else {
                 let padding = width.saturating_sub(cell_width);
-                segments.push(StyledSpan::new(format!(" {}{} ", cell, " ".repeat(padding)), style));
+                segments.push(StyledSpan::new(
+                    format!(" {}{} ", cell, " ".repeat(padding)),
+                    style,
+                ));
             }
 
             if i < widths.len() - 1 {
-                segments.push(StyledSpan::new("│".to_string(), Style::default().fg(Color::DarkGray)));
+                segments.push(StyledSpan::new(
+                    "│".to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
         }
 
-        segments.push(StyledSpan::new("│".to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new(
+            "│".to_string(),
+            Style::default().fg(Color::DarkGray),
+        ));
         LineContent::Styled(segments)
     }
 
@@ -219,45 +249,47 @@ pub fn xhtml_to_lines(
     let mut current_cell_content = String::new();
     let mut cell_is_header = false;
 
-    let push = |cur: &mut Vec<StyledSpan>, text: &str, style: Style, link_info: Option<LinkInfo>| {
-        if !text.is_empty() {
-            match link_info {
-                Some(info) => cur.push(StyledSpan::with_link(text.to_string(), style, info)),
-                None => cur.push(StyledSpan::new(text.to_string(), style)),
+    let push =
+        |cur: &mut Vec<StyledSpan>, text: &str, style: Style, link_info: Option<LinkInfo>| {
+            if !text.is_empty() {
+                match link_info {
+                    Some(info) => cur.push(StyledSpan::with_link(text.to_string(), style, info)),
+                    None => cur.push(StyledSpan::new(text.to_string(), style)),
+                }
             }
-        }
-    };
+        };
 
-    let current_style = |bold: bool, italic: bool, in_code: bool, link: bool, heading: Option<u8>| {
-        let mut s = Style::default();
-        if let Some(level) = heading {
-            let color = match level {
-                1 => Color::Yellow,
-                2 => Color::Cyan,
-                3 => Color::Green,
-                4 => Color::Magenta,
-                5 => Color::Blue,
-                _ => Color::White,
-            };
-            s = s.fg(color).add_modifier(Modifier::BOLD);
-            if level == 1 {
-                s = s.add_modifier(Modifier::UNDERLINED);
+    let current_style =
+        |bold: bool, italic: bool, in_code: bool, link: bool, heading: Option<u8>| {
+            let mut s = Style::default();
+            if let Some(level) = heading {
+                let color = match level {
+                    1 => Color::Yellow,
+                    2 => Color::Cyan,
+                    3 => Color::Green,
+                    4 => Color::Magenta,
+                    5 => Color::Blue,
+                    _ => Color::White,
+                };
+                s = s.fg(color).add_modifier(Modifier::BOLD);
+                if level == 1 {
+                    s = s.add_modifier(Modifier::UNDERLINED);
+                }
             }
-        }
-        if in_code {
-            s = s.fg(Color::Green).bg(Color::Black);
-        }
-        if link {
-            s = s.fg(Color::Blue).add_modifier(Modifier::UNDERLINED);
-        }
-        if bold {
-            s = s.add_modifier(Modifier::BOLD);
-        }
-        if italic {
-            s = s.add_modifier(Modifier::ITALIC);
-        }
-        s
-    };
+            if in_code {
+                s = s.fg(Color::Green).bg(Color::Black);
+            }
+            if link {
+                s = s.fg(Color::Blue).add_modifier(Modifier::UNDERLINED);
+            }
+            if bold {
+                s = s.add_modifier(Modifier::BOLD);
+            }
+            if italic {
+                s = s.add_modifier(Modifier::ITALIC);
+            }
+            s
+        };
 
     let flush = |out: &mut Vec<LineContent>, cur: &mut Vec<StyledSpan>| {
         if !cur.is_empty() {
@@ -286,7 +318,12 @@ pub fn xhtml_to_lines(
                         let level = tag[1..].parse::<u8>().unwrap_or(1);
                         let prefix = "#".repeat(level as usize) + " ";
                         heading = Some(level);
-                        push(&mut cur, &prefix, current_style(bold, italic, in_code, link, heading), None);
+                        push(
+                            &mut cur,
+                            &prefix,
+                            current_style(bold, italic, in_code, link, heading),
+                            None,
+                        );
                     }
                     "p" => {
                         if list_depth > 0 {
@@ -316,7 +353,12 @@ pub fn xhtml_to_lines(
                     "pre" => {
                         in_pre = true;
                         // Border top
-                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray), None);
+                        push(
+                            &mut cur,
+                            &"─".repeat(8),
+                            Style::default().fg(Color::DarkGray),
+                            None,
+                        );
                         flush(&mut out, &mut cur);
                     }
                     "ul" | "ol" => {
@@ -416,7 +458,12 @@ pub fn xhtml_to_lines(
                         flush(&mut out, &mut cur);
                     }
                     "hr" => {
-                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray), None);
+                        push(
+                            &mut cur,
+                            &"─".repeat(8),
+                            Style::default().fg(Color::DarkGray),
+                            None,
+                        );
                         flush(&mut out, &mut cur);
                         out.push(LineContent::Styled(Vec::new()));
                     }
@@ -453,7 +500,12 @@ pub fn xhtml_to_lines(
                     "code" if !in_pre => in_code = false,
                     "pre" => {
                         in_pre = false;
-                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray), None);
+                        push(
+                            &mut cur,
+                            &"─".repeat(8),
+                            Style::default().fg(Color::DarkGray),
+                            None,
+                        );
                         flush(&mut out, &mut cur);
                         out.push(LineContent::Styled(Vec::new()));
                     }
@@ -715,10 +767,13 @@ mod tests {
         let html = r#"<html><body></body></html>"#;
         let lines = xhtml_to_lines(html, None);
         // Should not panic, may have empty lines
-        assert!(lines.is_empty() || lines.iter().all(|l| match l {
-            LineContent::Styled(s) => s.is_empty(),
-            _ => true,
-        }));
+        assert!(
+            lines.is_empty()
+                || lines.iter().all(|l| match l {
+                    LineContent::Styled(s) => s.is_empty(),
+                    _ => true,
+                })
+        );
     }
 
     /// Extract inline link infos from styled spans.
