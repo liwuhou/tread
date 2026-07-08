@@ -84,7 +84,13 @@ jobs:
         if: ${{ endsWith(matrix.archive, '.zip') }}
         shell: pwsh
         run: |
-          & "smoke/${{ matrix.exe }}" *> out.txt
+          $exe = Join-Path "smoke" "${{ matrix.exe }}"
+          if (-not (Test-Path $exe)) {
+            Get-ChildItem -Recurse smoke
+            throw "Expected binary at $exe"
+          }
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $exe *> out.txt
           $status = $LASTEXITCODE
           Get-Content out.txt
           if ($status -eq 0) { throw "Expected usage invocation to exit non-zero" }
