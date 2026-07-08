@@ -550,11 +550,19 @@ pub enum CachedLine {
     },
 }
 
-/// Serializable span (text + style).
+/// Serializable link info (optional for styled spans).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedLinkInfo {
+    pub url: String,
+    pub is_external: bool,
+}
+
+/// Serializable span (text + style + optional link).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedSpan {
     pub text: String,
     pub style: StyleData,
+    pub link: Option<CachedLinkInfo>,
 }
 
 impl From<&LineContent> for CachedLine {
@@ -563,9 +571,13 @@ impl From<&LineContent> for CachedLine {
             LineContent::Styled(spans) => CachedLine::Styled {
                 spans: spans
                     .iter()
-                    .map(|(text, style)| CachedSpan {
-                        text: text.clone(),
-                        style: StyleData::from(*style),
+                    .map(|span| CachedSpan {
+                        text: span.text.clone(),
+                        style: StyleData::from(span.style),
+                        link: span.link.as_ref().map(|l| CachedLinkInfo {
+                            url: l.url.clone(),
+                            is_external: l.is_external,
+                        }),
                     })
                     .collect(),
             },
@@ -589,9 +601,22 @@ impl From<&CachedLine> for LineContent {
     fn from(cl: &CachedLine) -> Self {
         match cl {
             CachedLine::Styled { spans } => {
-                let styled_spans: Vec<(String, ratatui::style::Style)> = spans
+                let styled_spans: Vec<crate::image::StyledSpan> = spans
                     .iter()
-                    .map(|s| (s.text.clone(), ratatui::style::Style::from(&s.style)))
+                    .map(|s| {
+                        let style = ratatui::style::Style::from(&s.style);
+                        match &s.link {
+                            Some(l) => crate::image::StyledSpan::with_link(
+                                s.text.clone(),
+                                style,
+                                crate::image::LinkInfo {
+                                    url: l.url.clone(),
+                                    is_external: l.is_external,
+                                },
+                            ),
+                            None => crate::image::StyledSpan::new(s.text.clone(), style),
+                        }
+                    })
                     .collect();
                 if styled_spans.is_empty() {
                     LineContent::Styled(Vec::new())
@@ -675,7 +700,7 @@ pub fn merge_paragraphs(lines: Vec<LineContent>) -> Vec<LineContent> {
         .iter()
         .map(|lc| match lc {
             LineContent::Styled(spans) => {
-                let text: String = spans.iter().map(|(t, _)| t.as_str()).collect();
+                let text: String = spans.iter().map(|s| s.text.as_str()).collect();
                 if text.trim().is_empty() {
                     LineKind::Empty
                 } else {
@@ -711,7 +736,7 @@ pub fn merge_paragraphs(lines: Vec<LineContent>) -> Vec<LineContent> {
             LineKind::Content(text) => {
                 // Check if this should merge with next content paragraph
                 let mut merged_text = text.clone();
-                let mut merged_spans: Vec<(String, ratatui::style::Style)> = Vec::new();
+                let mut merged_spans: Vec<crate::image::StyledSpan> = Vec::new();
 
                 // Copy current spans
                 if let LineContent::Styled(ref spans) = lines[i] {
@@ -732,7 +757,7 @@ pub fn merge_paragraphs(lines: Vec<LineContent>) -> Vec<LineContent> {
                             // Merge: add next paragraph's spans to current
                             if let LineContent::Styled(ref next_spans) = lines[j] {
                                 // Add a space between merged paragraphs
-                                merged_spans.push((" ".to_string(), ratatui::style::Style::default()));
+                                merged_spans.push(crate::image::StyledSpan::new(" ".to_string(), ratatui::style::Style::default()));
                                 merged_spans.extend(next_spans.iter().cloned());
                                 merged_text.push(' ');
                                 merged_text.push_str(next_text);
@@ -823,7 +848,7 @@ mod merge_tests {
     use ratatui::style::Style;
 
     fn styled(text: &str) -> LineContent {
-        LineContent::Styled(vec![(text.to_string(), Style::default())])
+        LineContent::Styled(vec![crate::image::StyledSpan::new(text.to_string(), Style::default())])
     }
 
     fn empty() -> LineContent {
@@ -835,7 +860,7 @@ mod merge_tests {
             .iter()
             .filter_map(|lc| match lc {
                 LineContent::Styled(spans) => {
-                    let t: String = spans.iter().map(|(s, _)| s.as_str()).collect();
+                    let t: String = spans.iter().map(|s| s.text.as_str()).collect();
                     if t.is_empty() { None } else { Some(t) }
                 }
                 _ => None,

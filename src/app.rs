@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Style;
 
-use crate::image::{LineContent, ImageNode};
+use crate::image::{LineContent, ImageNode, LinkInfo, StyledSpan};
 
 /// Wrap content lines to fit within `max_width` columns.
 /// Image lines pass through unchanged (they occupy exactly one visual line).
@@ -30,11 +30,12 @@ pub fn wrap_lines(lines: &[LineContent], max_width: usize) -> Vec<LineContent> {
 }
 
 /// Wrap a single styled line into multiple styled lines.
-fn wrap_styled_line(spans: &[(String, Style)], max_width: usize) -> Vec<Vec<(String, Style)>> {
-    let mut tokens: Vec<(String, Style)> = Vec::new();
-    for (text, style) in spans {
-        for word in split_words_preserve(text) {
-            tokens.push((word.to_string(), *style));
+fn wrap_styled_line(spans: &[StyledSpan], max_width: usize) -> Vec<Vec<StyledSpan>> {
+    // Tokenize: each token is a (word, style, link) tuple
+    let mut tokens: Vec<(String, Style, Option<crate::image::LinkInfo>)> = Vec::new();
+    for span in spans {
+        for word in split_words_preserve(&span.text) {
+            tokens.push((word.to_string(), span.style, span.link.clone()));
         }
     }
 
@@ -42,23 +43,31 @@ fn wrap_styled_line(spans: &[(String, Style)], max_width: usize) -> Vec<Vec<(Str
         return vec![Vec::new()];
     }
 
-    let mut result: Vec<Vec<(String, Style)>> = Vec::new();
-    let mut current: Vec<(String, Style)> = Vec::new();
+    let mut result: Vec<Vec<StyledSpan>> = Vec::new();
+    let mut current: Vec<StyledSpan> = Vec::new();
     let mut current_width: usize = 0;
 
-    for (word, style) in tokens {
+    for (word, style, link) in tokens {
         let word_width = unicode_width::UnicodeWidthStr::width(word.as_str());
 
         if word.trim().is_empty() {
             if current_width + word_width <= max_width {
-                current.push((word, style));
+                let span = match link {
+                    Some(ref l) => StyledSpan::with_link(word.clone(), style, l.clone()),
+                    None => StyledSpan::new(word.clone(), style),
+                };
+                current.push(span);
                 current_width += word_width;
             }
             continue;
         }
 
         if current_width + word_width <= max_width {
-            current.push((word, style));
+            let span = match link {
+                Some(ref l) => StyledSpan::with_link(word.clone(), style, l.clone()),
+                None => StyledSpan::new(word.clone(), style),
+            };
+            current.push(span);
             current_width += word_width;
             continue;
         }
@@ -69,7 +78,11 @@ fn wrap_styled_line(spans: &[(String, Style)], max_width: usize) -> Vec<Vec<(Str
         }
 
         if word_width <= max_width {
-            current.push((word, style));
+            let span = match link {
+                Some(ref l) => StyledSpan::with_link(word.clone(), style, l.clone()),
+                None => StyledSpan::new(word.clone(), style),
+            };
+            current.push(span);
             current_width = word_width;
         } else {
             let mut buf = String::new();
@@ -77,7 +90,11 @@ fn wrap_styled_line(spans: &[(String, Style)], max_width: usize) -> Vec<Vec<(Str
             for ch in word.chars() {
                 let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
                 if buf_width + ch_width > max_width && !buf.is_empty() {
-                    result.push(vec![(buf.clone(), style)]);
+                    let span = match link {
+                        Some(ref l) => StyledSpan::with_link(buf.clone(), style, l.clone()),
+                        None => StyledSpan::new(buf.clone(), style),
+                    };
+                    result.push(vec![span]);
                     buf.clear();
                     buf_width = 0;
                 }
@@ -85,7 +102,11 @@ fn wrap_styled_line(spans: &[(String, Style)], max_width: usize) -> Vec<Vec<(Str
                 buf_width += ch_width;
             }
             if !buf.is_empty() {
-                current.push((buf, style));
+                let span = match link {
+                    Some(ref l) => StyledSpan::with_link(buf.clone(), style, l.clone()),
+                    None => StyledSpan::new(buf.clone(), style),
+                };
+                current.push(span);
                 current_width = buf_width;
             }
         }
@@ -136,9 +157,77 @@ fn split_words_preserve(s: &str) -> Vec<&str> {
     tokens
 }
 
+fn same_link(a: &LinkInfo, b: &LinkInfo) -> bool {
+    a.url == b.url && a.is_external == b.is_external
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // App state
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// A focusable item in the rendered document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FocusableItem {
+    /// A block image placeholder; the entire visual line is focusable.
+    Image { line_idx: usize },
+    /// A legacy block link; the entire visual line is focusable.
+    BlockLink {
+        line_idx: usize,
+        url: String,
+        is_external: bool,
+    },
+    /// An inline link range within a styled visual line.
+    InlineLink {
+        line_idx: usize,
+        start_offset: usize,
+        end_offset: usize,
+        url: String,
+        is_external: bool,
+    },
+}
+
+impl FocusableItem {
+    pub fn line_idx(&self) -> usize {
+        match self {
+            Self::Image { line_idx }
+            | Self::BlockLink { line_idx, .. }
+            | Self::InlineLink { line_idx, .. } => *line_idx,
+        }
+    }
+
+    pub fn inline_range_on_line(&self, line_idx: usize) -> Option<(usize, usize)> {
+        match self {
+            Self::InlineLink {
+                line_idx: item_line,
+                start_offset,
+                end_offset,
+                ..
+            } if *item_line == line_idx => Some((*start_offset, *end_offset)),
+            _ => None,
+        }
+    }
+
+    pub fn is_entire_line_on_line(&self, line_idx: usize) -> bool {
+        match self {
+            Self::Image { line_idx: item_line } | Self::BlockLink { line_idx: item_line, .. } => {
+                *item_line == line_idx
+            }
+            Self::InlineLink { .. } => false,
+        }
+    }
+
+    pub fn link(&self) -> Option<(String, bool)> {
+        match self {
+            Self::BlockLink {
+                url, is_external, ..
+            }
+            | Self::InlineLink {
+                url, is_external, ..
+            } => Some((url.clone(), *is_external)),
+            Self::Image { .. } => None,
+        }
+    }
+}
 
 /// Terminal reader application state.
 pub struct App {
@@ -148,9 +237,9 @@ pub struct App {
     pub height: Option<u16>,
     pub help_visible: bool,
     pub filename: String,
-    /// Indices (into wrapped_lines) of image nodes.
-    pub focusable_positions: Vec<usize>,
-    /// Currently focused image index in `focusable_positions` (None = no focus).
+    /// Focusable items in document order.
+    pub focusable_positions: Vec<FocusableItem>,
+    /// Currently focused item index in `focusable_positions` (None = no focus).
     pub focus_index: Option<usize>,
     /// Temporary status message.
     pub status_message: Option<String>,
@@ -248,15 +337,78 @@ impl App {
     }
 
     fn rebuild_focusable_positions(&mut self) {
-        self.focusable_positions = self
-            .wrapped_lines
-            .iter()
-            .enumerate()
-            .filter_map(|(i, lc)| match lc {
-                LineContent::Image(_) | LineContent::Link(_) => Some(i),
-                _ => None,
-            })
-            .collect();
+        let mut positions: Vec<FocusableItem> = Vec::new();
+
+        for (line_idx, lc) in self.wrapped_lines.iter().enumerate() {
+            match lc {
+                LineContent::Image(_) => {
+                    // Entire line is focusable
+                    positions.push(FocusableItem::Image { line_idx });
+                }
+                LineContent::Link(node) => {
+                    // Legacy block link support
+                    positions.push(FocusableItem::BlockLink {
+                        line_idx,
+                        url: node.url.clone(),
+                        is_external: node.is_external,
+                    });
+                }
+                LineContent::Styled(spans) => {
+                    // Scan for inline links and merge adjacent spans that belong to the same link.
+                    let mut char_offset = 0;
+                    let mut pending: Option<(usize, usize, LinkInfo)> = None;
+
+                    for span in spans {
+                        let span_width = unicode_width::UnicodeWidthStr::width(span.text.as_str());
+                        match (&mut pending, &span.link) {
+                            (Some((_, end_offset, current_link)), Some(link))
+                                if same_link(current_link, link) =>
+                            {
+                                *end_offset = char_offset + span_width;
+                            }
+                            (Some((start_offset, end_offset, current_link)), Some(link)) => {
+                                positions.push(FocusableItem::InlineLink {
+                                    line_idx,
+                                    start_offset: *start_offset,
+                                    end_offset: *end_offset,
+                                    url: current_link.url.clone(),
+                                    is_external: current_link.is_external,
+                                });
+                                pending = Some((char_offset, char_offset + span_width, link.clone()));
+                            }
+                            (None, Some(link)) => {
+                                pending = Some((char_offset, char_offset + span_width, link.clone()));
+                            }
+                            (Some((start_offset, end_offset, current_link)), None) => {
+                                positions.push(FocusableItem::InlineLink {
+                                    line_idx,
+                                    start_offset: *start_offset,
+                                    end_offset: *end_offset,
+                                    url: current_link.url.clone(),
+                                    is_external: current_link.is_external,
+                                });
+                                pending = None;
+                            }
+                            (None, None) => {}
+                        }
+                        char_offset += span_width;
+                    }
+
+                    if let Some((start_offset, end_offset, link)) = pending {
+                        positions.push(FocusableItem::InlineLink {
+                            line_idx,
+                            start_offset,
+                            end_offset,
+                            url: link.url,
+                            is_external: link.is_external,
+                        });
+                    }
+                }
+            }
+        }
+
+        self.focusable_positions = positions;
+
         // Clamp focus
         if let Some(focus) = self.focus_index {
             if focus >= self.focusable_positions.len() {
@@ -304,11 +456,33 @@ impl App {
         self.wrapped_lines.len()
     }
 
+    fn find_first_focusable_from_viewport(&self) -> usize {
+        self.focusable_positions
+            .iter()
+            .position(|item| item.line_idx() >= self.scroll)
+            .unwrap_or_else(|| self.focusable_positions.len().saturating_sub(1))
+    }
+
+    fn find_last_focusable_before_viewport(&self, height: usize) -> usize {
+        let viewport_end = self.scroll.saturating_add(height);
+        self.focusable_positions
+            .iter()
+            .rposition(|item| item.line_idx() < viewport_end)
+            .unwrap_or(0)
+    }
+
+    /// Get the focused link info (if any).
+    /// Returns (url, is_external) for the focused link.
+    pub fn focused_link(&self) -> Option<(String, bool)> {
+        let focus_idx = self.focus_index?;
+        self.focusable_positions.get(focus_idx)?.link()
+    }
+
     /// Get the focused content item (if any).
     pub fn focused_item(&self) -> Option<&LineContent> {
         let focus_idx = self.focus_index?;
-        let line_idx = self.focusable_positions.get(focus_idx)?;
-        Some(&self.wrapped_lines[*line_idx])
+        let line_idx = self.focusable_positions.get(focus_idx)?.line_idx();
+        Some(&self.wrapped_lines[line_idx])
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
@@ -398,12 +572,12 @@ impl App {
             KeyCode::Tab => {
                 if !self.focusable_positions.is_empty() {
                     self.focus_index = Some(match self.focus_index {
-                        None => 0,
+                        None => self.find_first_focusable_from_viewport(),
                         Some(f) => (f + 1) % self.focusable_positions.len(),
                     });
-                    // Scroll to show the focused image
+                    // Scroll to show the focused item
                     if let Some(focus) = self.focus_index {
-                        let line_idx = self.focusable_positions[focus];
+                        let line_idx = self.focusable_positions[focus].line_idx();
                         if line_idx < self.scroll || line_idx >= self.scroll + h {
                             self.scroll = line_idx.saturating_sub(h / 2);
                         }
@@ -413,12 +587,12 @@ impl App {
             KeyCode::BackTab => {
                 if !self.focusable_positions.is_empty() {
                     self.focus_index = Some(match self.focus_index {
-                        None => self.focusable_positions.len() - 1,
+                        None => self.find_last_focusable_before_viewport(h),
                         Some(0) => self.focusable_positions.len() - 1,
                         Some(f) => f - 1,
                     });
                     if let Some(focus) = self.focus_index {
-                        let line_idx = self.focusable_positions[focus];
+                        let line_idx = self.focusable_positions[focus].line_idx();
                         if line_idx < self.scroll || line_idx >= self.scroll + h {
                             self.scroll = line_idx.saturating_sub(h / 2);
                         }
@@ -426,37 +600,39 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                // Open focused item (image or link)
-                match self.focused_item() {
-                    Some(LineContent::Image(img)) => {
-                        if let Some(ref path) = img.local_path {
-                            match crate::image::open_with_viewer(path) {
-                                Ok(()) => self.status_message = None,
-                                Err(e) => self.status_message = Some(format!("打开失败: {e}")),
-                            }
-                        } else {
-                            self.status_message = Some("图片未缓存或下载失败，无法打开".to_string());
+                // Open focused link if any
+                if let Some((url, is_external)) = self.focused_link() {
+                    if is_external {
+                        match crate::image::open_url(&url) {
+                            Ok(()) => self.status_message = Some(format!("已打开: {}", &url)),
+                            Err(e) => self.status_message = Some(format!("打开失败: {e}")),
                         }
+                    } else if self.chapter_count > 0 {
+                        // Internal link in EPUB — try to find target chapter
+                        if let Some(chapter) = self.chapter_for_href(&url) {
+                            return Action::LoadChapter(chapter, false);
+                        } else {
+                            self.status_message = Some(format!("链接目标未找到: {}", &url));
+                        }
+                    } else {
+                        self.status_message = Some(format!("链接: {} (非 EPUB 模式)", &url));
                     }
-                    Some(LineContent::Link(link)) => {
-                        if link.is_external {
-                            match crate::image::open_url(&link.url) {
-                                Ok(()) => self.status_message = Some(format!("已打开: {}", &link.url)),
-                                Err(e) => self.status_message = Some(format!("打开失败: {e}")),
-                            }
-                        } else if self.chapter_count > 0 {
-                            // Internal link in EPUB — try to find target chapter
-                            if let Some(chapter) = self.chapter_for_href(&link.url) {
-                                return Action::LoadChapter(chapter, false);
+                } else {
+                    // Check if focused item is an image
+                    match self.focused_item() {
+                        Some(LineContent::Image(img)) => {
+                            if let Some(ref path) = img.local_path {
+                                match crate::image::open_with_viewer(path) {
+                                    Ok(()) => self.status_message = None,
+                                    Err(e) => self.status_message = Some(format!("打开失败: {e}")),
+                                }
                             } else {
-                                self.status_message = Some(format!("链接目标未找到: {}", &link.url));
+                                self.status_message = Some("图片未缓存或下载失败，无法打开".to_string());
                             }
-                        } else {
-                            self.status_message = Some(format!("链接: {} (非 EPUB 模式)", &link.url));
                         }
-                    }
-                    _ => {
-                        self.status_message = None;
+                        _ => {
+                            self.status_message = None;
+                        }
                     }
                 }
             }
@@ -546,14 +722,14 @@ mod tests {
     /// Build N styled lines, each containing "line_i".
     fn make_lines(n: usize) -> Vec<LineContent> {
         (0..n)
-            .map(|i| LineContent::Styled(vec![(format!("line_{i}"), Style::default())]))
+            .map(|i| LineContent::Styled(vec![StyledSpan::new(format!("line_{i}"), Style::default())]))
             .collect()
     }
 
     fn make_lines_with_images(text_count: usize, image_count: usize) -> Vec<LineContent> {
         let mut lines = Vec::new();
         for i in 0..text_count {
-            lines.push(LineContent::Styled(vec![(format!("line_{i}"), Style::default())]));
+            lines.push(LineContent::Styled(vec![StyledSpan::new(format!("line_{i}"), Style::default())]));
             if i < image_count {
                 lines.push(LineContent::Image(ImageNode {
                     alt: format!("img_{i}"),
@@ -572,7 +748,7 @@ mod tests {
             .iter()
             .filter_map(|lc| match lc {
                 LineContent::Styled(spans) => {
-                    Some(spans.iter().map(|(t, _)| t.as_str()).collect::<String>())
+                    Some(spans.iter().map(|s| s.text.as_str()).collect::<String>())
                 }
                 LineContent::Image(_) | LineContent::Link(_) => None,
             })
@@ -600,7 +776,7 @@ mod tests {
 
     #[test]
     fn wrap_short_line_not_broken() {
-        let input = vec![LineContent::Styled(vec![("hello".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new("hello".to_string(), Style::default())])];
         let result = wrap_lines(&input, 80);
         assert_eq!(result.len(), 1);
         assert_eq!(plain(&result)[0], "hello");
@@ -608,7 +784,7 @@ mod tests {
 
     #[test]
     fn wrap_english_breaks_at_word_boundary() {
-        let input = vec![LineContent::Styled(vec![("hello world foo".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new("hello world foo".to_string(), Style::default())])];
         let result = wrap_lines(&input, 12);
         assert!(result.len() >= 2, "expected at least 2 lines, got {}", result.len());
         let text = plain(&result);
@@ -618,21 +794,21 @@ mod tests {
 
     #[test]
     fn wrap_cjk_breaks_at_character_boundary() {
-        let input = vec![LineContent::Styled(vec![("你好世界".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new("你好世界".to_string(), Style::default())])];
         let result = wrap_lines(&input, 4);
         assert!(result.len() >= 2, "expected at least 2 lines for CJK wrap");
     }
 
     #[test]
     fn wrap_mixed_cjk_english() {
-        let input = vec![LineContent::Styled(vec![("hi 你好".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new("hi 你好".to_string(), Style::default())])];
         let result = wrap_lines(&input, 6);
         assert!(result.len() >= 2, "expected mixed content to wrap");
     }
 
     #[test]
     fn wrap_long_word_force_breaks() {
-        let input = vec![LineContent::Styled(vec![("abcdefghijklmnop".to_string(), Style::default())])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new("abcdefghijklmnop".to_string(), Style::default())])];
         let result = wrap_lines(&input, 8);
         assert!(result.len() >= 2, "expected force-break for long word");
     }
@@ -640,12 +816,12 @@ mod tests {
     #[test]
     fn wrap_preserves_style() {
         let bold = Style::default().add_modifier(Modifier::BOLD);
-        let input = vec![LineContent::Styled(vec![("hello world".to_string(), bold)])];
+        let input = vec![LineContent::Styled(vec![StyledSpan::new("hello world".to_string(), bold)])];
         let result = wrap_lines(&input, 80);
         assert!(!result.is_empty());
         match &result[0] {
             LineContent::Styled(spans) => {
-                assert!(spans.iter().any(|(_, s)| s.add_modifier.contains(Modifier::BOLD)));
+                assert!(spans.iter().any(|span| span.style.add_modifier.contains(Modifier::BOLD)));
             }
             _ => panic!("expected styled line"),
         }
@@ -654,7 +830,7 @@ mod tests {
     #[test]
     fn wrap_image_passes_through() {
         let input = vec![
-            LineContent::Styled(vec![("text".to_string(), Style::default())]),
+            LineContent::Styled(vec![StyledSpan::new("text".to_string(), Style::default())]),
             LineContent::Image(ImageNode {
                 alt: "test".to_string(),
                 url: "test.png".to_string(),
@@ -856,6 +1032,38 @@ mod tests {
     }
 
     #[test]
+    fn tab_initial_focus_starts_from_viewport() {
+        let lines = make_lines_with_images(10, 5);
+        let mut app = App::new(lines, "test.md".to_string());
+        app.set_height(3);
+        app.scroll_to_line(4);
+
+        assert!(app.focus_index.is_none());
+        app.handle_key(key(KeyCode::Tab));
+
+        // Images are at wrapped line indices 1, 3, 5, 7, 9.
+        // From scroll=4, Tab should choose the first focusable item in/after viewport: line 5.
+        assert_eq!(app.focus_index, Some(2));
+        assert_eq!(app.focusable_positions[2].line_idx(), 5);
+    }
+
+    #[test]
+    fn shift_tab_initial_focus_starts_from_viewport() {
+        let lines = make_lines_with_images(10, 5);
+        let mut app = App::new(lines, "test.md".to_string());
+        app.set_height(3);
+        app.scroll_to_line(4);
+
+        assert!(app.focus_index.is_none());
+        app.handle_key(key_shift(KeyCode::BackTab));
+
+        // Visible range is 4..7; Shift+Tab should choose the last focusable item
+        // in/before viewport: line 5.
+        assert_eq!(app.focus_index, Some(2));
+        assert_eq!(app.focusable_positions[2].line_idx(), 5);
+    }
+
+    #[test]
     fn tab_cycles_through_images() {
         let lines = make_lines_with_images(5, 3);
         let mut app = App::new(lines, "test.md".to_string());
@@ -918,15 +1126,37 @@ mod tests {
     }
 
     #[test]
+    fn multi_word_inline_link_is_one_focus_target_after_wrap() {
+        let link = crate::image::LinkInfo {
+            url: "https://example.com".to_string(),
+            is_external: true,
+        };
+        let lines = vec![LineContent::Styled(vec![StyledSpan::with_link(
+            "Learn more".to_string(),
+            Style::default(),
+            link,
+        )])];
+        let mut app = App::new(lines, "test.md".to_string());
+        app.set_height(50);
+
+        assert_eq!(plain(&app.wrapped_lines), vec!["Learn more".to_string()]);
+        assert_eq!(app.focusable_positions.len(), 1);
+
+        app.handle_key(key(KeyCode::Tab));
+        assert_eq!(app.focus_index, Some(0));
+        assert_eq!(app.focused_link(), Some(("https://example.com".to_string(), true)));
+    }
+
+    #[test]
     fn tab_navigates_links_and_images_together() {
         // Mix of images and links
         let lines = vec![
-            LineContent::Styled(vec![("text".to_string(), Style::default())]),
+            LineContent::Styled(vec![StyledSpan::new("text".to_string(), Style::default())]),
             LineContent::Image(crate::image::ImageNode {
                 alt: "img".to_string(), url: "img.png".to_string(),
                 local_path: None, id: 0, download_failed: false,
             }),
-            LineContent::Styled(vec![("more text".to_string(), Style::default())]),
+            LineContent::Styled(vec![StyledSpan::new("more text".to_string(), Style::default())]),
             LineContent::Link(crate::image::LinkNode {
                 text: "link".to_string(), url: "https://example.com".to_string(),
                 is_external: true,

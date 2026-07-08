@@ -36,6 +36,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
     let h = app.height.unwrap_or(0) as usize;
 
+    // Get current focus info
+    let focused_item = app
+        .focus_index
+        .and_then(|f| app.focusable_positions.get(f));
+
     let visible: Vec<Line> = app
         .wrapped_lines
         .iter()
@@ -44,17 +49,38 @@ fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
         .take(h)
         .map(|(idx, content)| match content {
             LineContent::Styled(spans) => {
-                let owned: Vec<Span> = spans
-                    .iter()
-                    .map(|(text, style)| Span::styled(text.clone(), *style))
-                    .collect();
+                // Check if this line has a focused inline link range.
+                let focused_range = focused_item.and_then(|item| item.inline_range_on_line(idx));
+
+                let mut owned: Vec<Span> = Vec::new();
+                let mut char_offset = 0;
+
+                for span in spans {
+                    let span_width = unicode_width::UnicodeWidthStr::width(span.text.as_str());
+                    let span_end = char_offset + span_width;
+                    let is_link_focused = span.link.is_some()
+                        && focused_range
+                            .map(|(start, end)| span_end > start && char_offset < end)
+                            .unwrap_or(false);
+                    let style = if is_link_focused {
+                        // Focused link style
+                        span.style
+                            .fg(Color::White)
+                            .bg(Color::DarkGray)
+                            .add_modifier(Modifier::BOLD)
+                            .add_modifier(Modifier::UNDERLINED)
+                    } else {
+                        span.style
+                    };
+                    owned.push(Span::styled(span.text.clone(), style));
+                    char_offset = span_end;
+                }
+
                 Line::from(owned)
             }
             LineContent::Image(node) => {
-                let is_focused = app
-                    .focus_index
-                    .and_then(|f| app.focusable_positions.get(f))
-                    .map(|&pos| pos == idx)
+                let is_focused = focused_item
+                    .map(|item| item.is_entire_line_on_line(idx))
                     .unwrap_or(false);
 
                 let alt_display = if node.alt.is_empty() {
@@ -83,10 +109,8 @@ fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
                 Line::from(vec![Span::styled(text, style)])
             }
             LineContent::Link(node) => {
-                let is_focused = app
-                    .focus_index
-                    .and_then(|f| app.focusable_positions.get(f))
-                    .map(|&pos| pos == idx)
+                let is_focused = focused_item
+                    .map(|item| item.is_entire_line_on_line(idx))
                     .unwrap_or(false);
 
                 let display = if node.text.is_empty() {

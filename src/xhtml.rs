@@ -3,7 +3,7 @@ use quick_xml::reader::Reader;
 use ratatui::style::{Color, Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
-use crate::image::{ImageNode, LineContent};
+use crate::image::{ImageNode, LineContent, StyledSpan, LinkInfo};
 
 /// Represents a parsed HTML table.
 #[derive(Debug, Clone)]
@@ -113,29 +113,29 @@ impl Table {
     }
 
     fn render_border(&self, left: &str, middle: &str, right: &str, widths: &[usize]) -> LineContent {
-        let mut segments = Vec::new();
-        segments.push((left.to_string(), Style::default().fg(Color::DarkGray)));
+        let mut segments: Vec<StyledSpan> = Vec::new();
+        segments.push(StyledSpan::new(left.to_string(), Style::default().fg(Color::DarkGray)));
 
         for (i, &width) in widths.iter().enumerate() {
-            segments.push(("─".repeat(width), Style::default().fg(Color::DarkGray)));
+            segments.push(StyledSpan::new("─".repeat(width), Style::default().fg(Color::DarkGray)));
             if i < widths.len() - 1 {
-                segments.push((middle.to_string(), Style::default().fg(Color::DarkGray)));
+                segments.push(StyledSpan::new(middle.to_string(), Style::default().fg(Color::DarkGray)));
             }
         }
 
-        segments.push((right.to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new(right.to_string(), Style::default().fg(Color::DarkGray)));
         LineContent::Styled(segments)
     }
 
     fn render_row(&self, row: &[String], widths: &[usize], is_header: bool) -> LineContent {
-        let mut segments = Vec::new();
+        let mut segments: Vec<StyledSpan> = Vec::new();
         let style = if is_header {
             Style::default().add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
 
-        segments.push(("│".to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new("│".to_string(), Style::default().fg(Color::DarkGray)));
 
         for (i, &width) in widths.iter().enumerate() {
             let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
@@ -144,18 +144,18 @@ impl Table {
             if cell_width > width {
                 // Truncate
                 let truncated = self.truncate_to_width(cell, width.saturating_sub(3));
-                segments.push((format!(" {} ", truncated), style));
+                segments.push(StyledSpan::new(format!(" {} ", truncated), style));
             } else {
                 let padding = width.saturating_sub(cell_width);
-                segments.push((format!(" {}{} ", cell, " ".repeat(padding)), style));
+                segments.push(StyledSpan::new(format!(" {}{} ", cell, " ".repeat(padding)), style));
             }
 
             if i < widths.len() - 1 {
-                segments.push(("│".to_string(), Style::default().fg(Color::DarkGray)));
+                segments.push(StyledSpan::new("│".to_string(), Style::default().fg(Color::DarkGray)));
             }
         }
 
-        segments.push(("│".to_string(), Style::default().fg(Color::DarkGray)));
+        segments.push(StyledSpan::new("│".to_string(), Style::default().fg(Color::DarkGray)));
         LineContent::Styled(segments)
     }
 
@@ -191,7 +191,7 @@ pub fn xhtml_to_lines(
     let mut buf = Vec::new();
 
     let mut out: Vec<LineContent> = Vec::new();
-    let mut cur: Vec<(String, Style)> = Vec::new();
+    let mut cur: Vec<StyledSpan> = Vec::new();
 
     // Style state
     let mut bold = false;
@@ -202,8 +202,6 @@ pub fn xhtml_to_lines(
 
     // Link tracking
     let mut link_url = String::new();
-    let mut link_text = String::new();
-    let mut pending_links: Vec<crate::image::LinkNode> = Vec::new();
     let mut heading: Option<u8> = None;
     let mut list_depth: usize = 0;
     let mut in_blockquote = false;
@@ -221,9 +219,12 @@ pub fn xhtml_to_lines(
     let mut current_cell_content = String::new();
     let mut cell_is_header = false;
 
-    let push = |cur: &mut Vec<(String, Style)>, text: &str, style: Style| {
+    let push = |cur: &mut Vec<StyledSpan>, text: &str, style: Style, link_info: Option<LinkInfo>| {
         if !text.is_empty() {
-            cur.push((text.to_string(), style));
+            match link_info {
+                Some(info) => cur.push(StyledSpan::with_link(text.to_string(), style, info)),
+                None => cur.push(StyledSpan::new(text.to_string(), style)),
+            }
         }
     };
 
@@ -258,7 +259,7 @@ pub fn xhtml_to_lines(
         s
     };
 
-    let flush = |out: &mut Vec<LineContent>, cur: &mut Vec<(String, Style)>| {
+    let flush = |out: &mut Vec<LineContent>, cur: &mut Vec<StyledSpan>| {
         if !cur.is_empty() {
             out.push(LineContent::Styled(std::mem::take(cur)));
         }
@@ -285,14 +286,14 @@ pub fn xhtml_to_lines(
                         let level = tag[1..].parse::<u8>().unwrap_or(1);
                         let prefix = "#".repeat(level as usize) + " ";
                         heading = Some(level);
-                        push(&mut cur, &prefix, current_style(bold, italic, in_code, link, heading));
+                        push(&mut cur, &prefix, current_style(bold, italic, in_code, link, heading), None);
                     }
                     "p" => {
                         if list_depth > 0 {
-                            push(&mut cur, &list_indent(list_depth), Style::default());
+                            push(&mut cur, &list_indent(list_depth), Style::default(), None);
                         }
                         if in_blockquote {
-                            push(&mut cur, "  ▎ ", Style::default().fg(Color::DarkGray));
+                            push(&mut cur, "  ▎ ", Style::default().fg(Color::DarkGray), None);
                         }
                     }
                     "strong" | "b" => bold = true,
@@ -305,7 +306,9 @@ pub fn xhtml_to_lines(
                                 link_url = String::from_utf8_lossy(&attr.value).into_owned();
                             }
                         }
-                        link_text.clear();
+                        // Add 🔗 prefix for inline link marker
+                        let style = current_style(bold, italic, in_code, link, heading);
+                        push(&mut cur, "🔗", style, None);
                     }
                     "code" if !in_pre => {
                         in_code = true;
@@ -313,7 +316,7 @@ pub fn xhtml_to_lines(
                     "pre" => {
                         in_pre = true;
                         // Border top
-                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray));
+                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray), None);
                         flush(&mut out, &mut cur);
                     }
                     "ul" | "ol" => {
@@ -321,12 +324,12 @@ pub fn xhtml_to_lines(
                     }
                     "li" => {
                         let indent_str = list_indent(list_depth.saturating_sub(1));
-                        push(&mut cur, &indent_str, Style::default());
-                        push(&mut cur, "• ", Style::default().fg(Color::Magenta));
+                        push(&mut cur, &indent_str, Style::default(), None);
+                        push(&mut cur, "• ", Style::default().fg(Color::Magenta), None);
                     }
                     "blockquote" => {
                         in_blockquote = true;
-                        push(&mut cur, "  ▎ ", Style::default().fg(Color::DarkGray));
+                        push(&mut cur, "  ▎ ", Style::default().fg(Color::DarkGray), None);
                     }
                     "img" => {
                         // img is usually self-closing (Empty), but handle Start too
@@ -413,7 +416,7 @@ pub fn xhtml_to_lines(
                         flush(&mut out, &mut cur);
                     }
                     "hr" => {
-                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray));
+                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray), None);
                         flush(&mut out, &mut cur);
                         out.push(LineContent::Styled(Vec::new()));
                     }
@@ -440,29 +443,17 @@ pub fn xhtml_to_lines(
                     }
                     "p" => {
                         flush(&mut out, &mut cur);
-                        // Emit any collected links as focusable items
-                        for link_node in pending_links.drain(..) {
-                            out.push(LineContent::Link(link_node));
-                        }
                         out.push(LineContent::Styled(Vec::new()));
                     }
                     "strong" | "b" => bold = false,
                     "em" | "i" => italic = false,
                     "a" => {
                         link = false;
-                        if !link_url.is_empty() {
-                            let is_external = crate::image::is_remote_url(&link_url);
-                            pending_links.push(crate::image::LinkNode {
-                                text: link_text.clone(),
-                                url: link_url.clone(),
-                                is_external,
-                            });
-                        }
                     }
                     "code" if !in_pre => in_code = false,
                     "pre" => {
                         in_pre = false;
-                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray));
+                        push(&mut cur, &"─".repeat(8), Style::default().fg(Color::DarkGray), None);
                         flush(&mut out, &mut cur);
                         out.push(LineContent::Styled(Vec::new()));
                     }
@@ -539,7 +530,7 @@ pub fn xhtml_to_lines(
                     for (i, line) in lines.iter().enumerate() {
                         if !line.is_empty() {
                             let style = current_style(bold, italic, in_code, link, heading);
-                            push(&mut cur, line, style);
+                            push(&mut cur, line, style, None);
                         }
                         // Flush after each line except the last (to avoid extra empty line)
                         if i < lines.len() - 1 {
@@ -548,10 +539,15 @@ pub fn xhtml_to_lines(
                     }
                 } else {
                     let style = current_style(bold, italic, in_code, link, heading);
-                    push(&mut cur, &text, style);
-                    if link {
-                        link_text.push_str(&text);
-                    }
+                    let link_info = if link {
+                        Some(LinkInfo {
+                            url: link_url.clone(),
+                            is_external: crate::image::is_remote_url(&link_url),
+                        })
+                    } else {
+                        None
+                    };
+                    push(&mut cur, &text, style, link_info);
                 }
             }
 
@@ -582,7 +578,7 @@ mod tests {
             .iter()
             .filter_map(|lc| match lc {
                 LineContent::Styled(spans) => {
-                    Some(spans.iter().map(|(t, _)| t.as_str()).collect::<String>())
+                    Some(spans.iter().map(|s| s.text.as_str()).collect::<String>())
                 }
                 _ => None,
             })
@@ -725,13 +721,16 @@ mod tests {
         }));
     }
 
-    fn link_nodes(lines: &[LineContent]) -> Vec<&crate::image::LinkNode> {
+    /// Extract inline link infos from styled spans.
+    fn inline_link_infos(lines: &[LineContent]) -> Vec<&LinkInfo> {
         lines
             .iter()
             .filter_map(|lc| match lc {
-                LineContent::Link(node) => Some(node),
+                LineContent::Styled(spans) => Some(spans),
                 _ => None,
             })
+            .flat_map(|spans| spans.iter())
+            .filter_map(|span| span.link.as_ref())
             .collect()
     }
 
@@ -739,9 +738,8 @@ mod tests {
     fn link_external() {
         let html = r#"<html><body><p><a href="https://example.com">visit</a></p></body></html>"#;
         let lines = xhtml_to_lines(html, None);
-        let links = link_nodes(&lines);
-        assert_eq!(links.len(), 1);
-        assert_eq!(links[0].text, "visit");
+        let links = inline_link_infos(&lines);
+        assert!(!links.is_empty());
         assert_eq!(links[0].url, "https://example.com");
         assert!(links[0].is_external);
     }
@@ -750,8 +748,16 @@ mod tests {
     fn link_internal() {
         let html = r#"<html><body><p><a href="chapter2.xhtml">next</a></p></body></html>"#;
         let lines = xhtml_to_lines(html, None);
-        let links = link_nodes(&lines);
-        assert_eq!(links.len(), 1);
+        let links = inline_link_infos(&lines);
+        assert!(!links.is_empty());
         assert!(!links[0].is_external);
+    }
+
+    #[test]
+    fn link_has_link_icon_prefix() {
+        let html = r#"<html><body><p><a href="https://example.com">visit</a></p></body></html>"#;
+        let lines = xhtml_to_lines(html, None);
+        let text = styled_text(&lines);
+        assert!(text.iter().any(|l| l.contains("🔗")));
     }
 }

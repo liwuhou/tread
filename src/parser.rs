@@ -1,7 +1,7 @@
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::image::{ImageNode, LineContent};
+use crate::image::{ImageNode, LineContent, StyledSpan, LinkInfo};
 
 /// Parse Markdown source into content lines (styled text + image nodes).
 pub fn parse_markdown(source: &str) -> Vec<LineContent> {
@@ -25,8 +25,6 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
 
     // Link tracking
     let mut link_url = String::new();
-    let mut link_text = String::new();
-    let mut pending_links: Vec<crate::image::LinkNode> = Vec::new();
 
     // Block state
     let mut in_code_block = false;
@@ -42,11 +40,14 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
     let mut image_alt = String::new();
     let mut image_count: usize = 0;
 
-    let mut cur: Vec<(String, Style)> = Vec::new();
+    let mut cur: Vec<StyledSpan> = Vec::new();
 
-    let push = |cur: &mut Vec<(String, Style)>, text: &str, style: Style| {
+    let push = |cur: &mut Vec<StyledSpan>, text: &str, style: Style, link_info: Option<LinkInfo>| {
         if !text.is_empty() {
-            cur.push((text.to_string(), style));
+            match link_info {
+                Some(info) => cur.push(StyledSpan::with_link(text.to_string(), style, info)),
+                None => cur.push(StyledSpan::new(text.to_string(), style)),
+            }
         }
     };
 
@@ -85,7 +86,7 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
     let terminal_width = crossterm::terminal::size().map(|(w, _)| w as usize).unwrap_or(80);
     let max_width = terminal_width.max(10);
 
-    let flush_line = |out: &mut Vec<LineContent>, cur: &mut Vec<(String, Style)>| {
+    let flush_line = |out: &mut Vec<LineContent>, cur: &mut Vec<StyledSpan>| {
         if !cur.is_empty() {
             out.push(LineContent::Styled(std::mem::take(cur)));
         }
@@ -121,16 +122,12 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
                 let indent = item_stack.last().copied().unwrap_or(0);
                 if in_blockquote {
                     let bq_style = Style::default().fg(Color::DarkGray);
-                    push(&mut cur, "  ▎ ", bq_style);
+                    push(&mut cur, "  ▎ ", bq_style, None);
                 }
                 cur.extend(apply_indent(indent));
             }
             Event::End(TagEnd::Paragraph) => {
                 flush_line(&mut out, &mut cur);
-                // Emit any collected links as focusable items
-                for link_node in pending_links.drain(..) {
-                    out.push(LineContent::Link(link_node));
-                }
                 out.push(LineContent::Styled(Vec::new()));
             }
 
@@ -138,7 +135,7 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
                 let prefix = "#".repeat(level as usize) + " ";
                 in_heading = Some(level);
                 let style = current_style(true, false, false, false, in_heading);
-                push(&mut cur, &prefix, style);
+                push(&mut cur, &prefix, style, None);
             }
             Event::End(TagEnd::Heading(_)) => {
                 flush_line(&mut out, &mut cur);
@@ -155,47 +152,53 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
             Event::Start(Tag::Link { dest_url, .. }) => {
                 link = true;
                 link_url = dest_url.to_string();
-                link_text.clear();
+                // Add 🔗 prefix for inline link marker
+                let style = current_style(bold, italic, strikethrough, link, in_heading);
+                push(&mut cur, "🔗", style, None);
             }
             Event::End(TagEnd::Link) => {
                 link = false;
-                // Queue this link as a focusable item
-                let is_external = crate::image::is_remote_url(&link_url);
-                pending_links.push(crate::image::LinkNode {
-                    text: link_text.clone(),
-                    url: link_url.clone(),
-                    is_external,
-                });
             }
 
             Event::Code(code_text) => {
                 let style = Style::default().fg(Color::Green).bg(Color::Black);
-                push(&mut cur, &format!(" {code_text} "), style);
+                push(&mut cur, &format!(" {code_text} "), style, None);
             }
 
             Event::Html(html) | Event::InlineHtml(html) => {
                 let style = current_style(bold, italic, strikethrough, link, in_heading);
-                push(&mut cur, html.as_ref(), style);
+                let link_info = if link {
+                    Some(LinkInfo {
+                        url: link_url.clone(),
+                        is_external: crate::image::is_remote_url(&link_url),
+                    })
+                } else {
+                    None
+                };
+                push(&mut cur, html.as_ref(), style, link_info);
             }
 
             Event::Text(text) => {
                 if in_image {
                     image_alt.push_str(text.as_ref());
                 } else if link {
-                    link_text.push_str(text.as_ref());
                     let style = current_style(bold, italic, strikethrough, link, in_heading);
-                    push(&mut cur, text.as_ref(), style);
+                    let link_info = Some(LinkInfo {
+                        url: link_url.clone(),
+                        is_external: crate::image::is_remote_url(&link_url),
+                    });
+                    push(&mut cur, text.as_ref(), style, link_info);
                 } else if in_code_block {
                     let style = Style::default().fg(Color::Green).bg(Color::Black);
                     for line in text.as_ref().split('\n') {
                         if !line.is_empty() || text.ends_with('\n') {
-                            push(&mut cur, line, style);
+                            push(&mut cur, line, style, None);
                             flush_line(&mut out, &mut cur);
                         }
                     }
                 } else {
                     let style = current_style(bold, italic, strikethrough, link, in_heading);
-                    push(&mut cur, text.as_ref(), style);
+                    push(&mut cur, text.as_ref(), style, None);
                 }
             }
 
@@ -204,7 +207,7 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
                 let indent = item_stack.last().copied().unwrap_or(0);
                 if in_blockquote {
                     let bq_style = Style::default().fg(Color::DarkGray);
-                    push(&mut cur, "  ▎ ", bq_style);
+                    push(&mut cur, "  ▎ ", bq_style, None);
                 }
                 cur.extend(apply_indent(indent));
             }
@@ -220,17 +223,17 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
                     let style = Style::default()
                         .fg(Color::DarkGray)
                         .add_modifier(Modifier::ITALIC);
-                    push(&mut cur, &format!("  ── {code_lang} "), style);
+                    push(&mut cur, &format!("  ── {code_lang} "), style, None);
                     flush_line(&mut out, &mut cur);
                 }
                 let style = Style::default().fg(Color::DarkGray);
-                push(&mut cur, &"─".repeat(max_width.min(8)), style);
+                push(&mut cur, &"─".repeat(max_width.min(8)), style, None);
                 flush_line(&mut out, &mut cur);
             }
             Event::End(TagEnd::CodeBlock) => {
                 in_code_block = false;
                 let style = Style::default().fg(Color::DarkGray);
-                push(&mut cur, &"─".repeat(max_width.min(8)), style);
+                push(&mut cur, &"─".repeat(max_width.min(8)), style, None);
                 flush_line(&mut out, &mut cur);
                 out.push(LineContent::Styled(Vec::new()));
             }
@@ -248,8 +251,8 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
                 let indent = item_stack.len() * 2 + 2;
                 let style = Style::default().fg(Color::Magenta);
                 let indent_str = " ".repeat(indent);
-                push(&mut cur, &indent_str, Style::default());
-                push(&mut cur, "• ", style);
+                push(&mut cur, &indent_str, Style::default(), None);
+                push(&mut cur, "• ", style, None);
                 item_stack.push(indent);
             }
             Event::End(TagEnd::Item) => {
@@ -268,7 +271,7 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
 
             Event::Rule => {
                 let style = Style::default().fg(Color::DarkGray);
-                push(&mut cur, &"─".repeat(max_width.min(8)), style);
+                push(&mut cur, &"─".repeat(max_width.min(8)), style, None);
                 flush_line(&mut out, &mut cur);
                 out.push(LineContent::Styled(Vec::new()));
             }
@@ -276,12 +279,12 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
             // Tables
             Event::Start(Tag::Table(_)) => {
                 let style = Style::default().fg(Color::DarkGray);
-                push(&mut cur, &"─".repeat(max_width.min(8)), style);
+                push(&mut cur, &"─".repeat(max_width.min(8)), style, None);
                 flush_line(&mut out, &mut cur);
             }
             Event::End(TagEnd::Table) => {
                 let style = Style::default().fg(Color::DarkGray);
-                push(&mut cur, &"─".repeat(max_width.min(8)), style);
+                push(&mut cur, &"─".repeat(max_width.min(8)), style, None);
                 flush_line(&mut out, &mut cur);
                 out.push(LineContent::Styled(Vec::new()));
             }
@@ -292,7 +295,7 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
 
             Event::Start(Tag::TableCell) => {
                 let style = Style::default().fg(Color::White);
-                push(&mut cur, " │ ", style);
+                push(&mut cur, " │ ", style, None);
             }
             Event::End(TagEnd::TableCell) => {}
 
@@ -307,11 +310,11 @@ pub fn parse_markdown(source: &str) -> Vec<LineContent> {
     out
 }
 
-fn apply_indent(indent: usize) -> Vec<(String, Style)> {
+fn apply_indent(indent: usize) -> Vec<StyledSpan> {
     if indent == 0 {
         Vec::new()
     } else {
-        vec![(" ".repeat(indent), Style::default())]
+        vec![StyledSpan::new(" ".repeat(indent), Style::default())]
     }
 }
 
@@ -330,7 +333,7 @@ mod tests {
             .iter()
             .filter_map(|lc| match lc {
                 LineContent::Styled(spans) => {
-                    Some(spans.iter().map(|(t, _)| t.as_str()).collect::<String>())
+                    Some(spans.iter().map(|s| s.text.as_str()).collect::<String>())
                 }
                 LineContent::Image(_) | LineContent::Link(_) => None,
             })
@@ -338,7 +341,7 @@ mod tests {
     }
 
     /// Get styled lines only.
-    fn styled_lines(lines: &[LineContent]) -> Vec<&Vec<(String, Style)>> {
+    fn styled_lines(lines: &[LineContent]) -> Vec<&Vec<StyledSpan>> {
         lines
             .iter()
             .filter_map(|lc| match lc {
@@ -359,12 +362,12 @@ mod tests {
             .collect()
     }
 
-    fn line_has_modifier(line: &[(String, Style)], modifier: Modifier) -> bool {
-        line.iter().any(|(_, s)| s.add_modifier.contains(modifier))
+    fn line_has_modifier(line: &[StyledSpan], modifier: Modifier) -> bool {
+        line.iter().any(|s| s.style.add_modifier.contains(modifier))
     }
 
-    fn line_has_fg(line: &[(String, Style)], color: Color) -> bool {
-        line.iter().any(|(_, s)| s.fg == Some(color))
+    fn line_has_fg(line: &[StyledSpan], color: Color) -> bool {
+        line.iter().any(|s| s.style.fg == Some(color))
     }
 
     // ── Existing tests (updated for LineContent) ────────────────────────────
@@ -420,10 +423,10 @@ mod tests {
         let all_bold: Vec<_> = styled_lines(&lines)
             .into_iter()
             .flat_map(|l| l.iter())
-            .filter(|(t, _)| t.contains("bold"))
+            .filter(|span| span.text.contains("bold"))
             .collect();
         assert!(!all_bold.is_empty());
-        assert!(all_bold.iter().any(|(_, s)| s.add_modifier.contains(Modifier::BOLD)));
+        assert!(all_bold.iter().any(|span| span.style.add_modifier.contains(Modifier::BOLD)));
     }
 
     #[test]
@@ -432,10 +435,10 @@ mod tests {
         let all_it: Vec<_> = styled_lines(&lines)
             .into_iter()
             .flat_map(|l| l.iter())
-            .filter(|(t, _)| t.contains("italic"))
+            .filter(|span| span.text.contains("italic"))
             .collect();
         assert!(!all_it.is_empty());
-        assert!(all_it.iter().any(|(_, s)| s.add_modifier.contains(Modifier::ITALIC)));
+        assert!(all_it.iter().any(|span| span.style.add_modifier.contains(Modifier::ITALIC)));
     }
 
     #[test]
@@ -444,10 +447,10 @@ mod tests {
         let all_st: Vec<_> = styled_lines(&lines)
             .into_iter()
             .flat_map(|l| l.iter())
-            .filter(|(t, _)| t.contains("struck"))
+            .filter(|span| span.text.contains("struck"))
             .collect();
         assert!(!all_st.is_empty());
-        assert!(all_st.iter().any(|(_, s)| s.add_modifier.contains(Modifier::CROSSED_OUT)));
+        assert!(all_st.iter().any(|span| span.style.add_modifier.contains(Modifier::CROSSED_OUT)));
     }
 
     #[test]
@@ -456,10 +459,10 @@ mod tests {
         let code_spans: Vec<_> = styled_lines(&lines)
             .into_iter()
             .flat_map(|l| l.iter())
-            .filter(|(t, _)| t.contains("code"))
+            .filter(|span| span.text.contains("code"))
             .collect();
         assert!(!code_spans.is_empty());
-        assert!(code_spans.iter().any(|(_, s)| s.fg == Some(Color::Green)));
+        assert!(code_spans.iter().any(|span| span.style.fg == Some(Color::Green)));
     }
 
     #[test]
@@ -468,11 +471,11 @@ mod tests {
         let link_spans: Vec<_> = styled_lines(&lines)
             .into_iter()
             .flat_map(|l| l.iter())
-            .filter(|(t, _)| t.contains("click"))
+            .filter(|span| span.text.contains("click"))
             .collect();
         assert!(!link_spans.is_empty());
-        assert!(link_spans.iter().any(|(_, s)| s.fg == Some(Color::Blue)));
-        assert!(link_spans.iter().any(|(_, s)| s.add_modifier.contains(Modifier::UNDERLINED)));
+        assert!(link_spans.iter().any(|span| span.style.fg == Some(Color::Blue)));
+        assert!(link_spans.iter().any(|span| span.style.add_modifier.contains(Modifier::UNDERLINED)));
     }
 
     #[test]
@@ -602,12 +605,24 @@ mod tests {
             .collect()
     }
 
+    /// Extract inline link infos from styled spans.
+    fn inline_link_infos(lines: &[LineContent]) -> Vec<&LinkInfo> {
+        lines
+            .iter()
+            .filter_map(|lc| match lc {
+                LineContent::Styled(spans) => Some(spans),
+                _ => None,
+            })
+            .flat_map(|spans| spans.iter())
+            .filter_map(|span| span.link.as_ref())
+            .collect()
+    }
+
     #[test]
     fn link_external() {
         let lines = parse_markdown("[click](https://example.com)");
-        let links = link_nodes(&lines);
-        assert_eq!(links.len(), 1);
-        assert_eq!(links[0].text, "click");
+        let links = inline_link_infos(&lines);
+        assert!(!links.is_empty());
         assert_eq!(links[0].url, "https://example.com");
         assert!(links[0].is_external);
     }
@@ -615,15 +630,22 @@ mod tests {
     #[test]
     fn link_internal() {
         let lines = parse_markdown("[next](chapter2.xhtml#section)");
-        let links = link_nodes(&lines);
-        assert_eq!(links.len(), 1);
+        let links = inline_link_infos(&lines);
+        assert!(!links.is_empty());
         assert!(!links[0].is_external);
     }
 
     #[test]
     fn multiple_links_in_paragraph() {
         let lines = parse_markdown("See [a](url1) and [b](url2)");
-        let links = link_nodes(&lines);
-        assert_eq!(links.len(), 2);
+        let links = inline_link_infos(&lines);
+        assert!(links.len() >= 2);
+    }
+
+    #[test]
+    fn link_has_link_icon_prefix() {
+        let lines = parse_markdown("[click](https://example.com)");
+        let text = plain(&lines);
+        assert!(text.iter().any(|l| l.contains("🔗")));
     }
 }

@@ -30,14 +30,54 @@ pub struct LinkNode {
     pub is_external: bool,
 }
 
+/// Link metadata attached to an inline span.
+#[derive(Debug, Clone)]
+pub struct LinkInfo {
+    /// The URL / href value.
+    pub url: String,
+    /// Whether this is an external (http/https) link.
+    pub is_external: bool,
+}
+
+/// A styled text span with optional link metadata.
+#[derive(Debug, Clone)]
+pub struct StyledSpan {
+    /// The text content.
+    pub text: String,
+    /// The visual style.
+    pub style: ratatui::style::Style,
+    /// Optional link metadata (if this span is part of a hyperlink).
+    pub link: Option<LinkInfo>,
+}
+
+impl StyledSpan {
+    /// Create a new styled span without link metadata.
+    pub fn new(text: String, style: ratatui::style::Style) -> Self {
+        Self {
+            text,
+            style,
+            link: None,
+        }
+    }
+
+    /// Create a new styled span with link metadata.
+    pub fn with_link(text: String, style: ratatui::style::Style, link: LinkInfo) -> Self {
+        Self {
+            text,
+            style,
+            link: Some(link),
+        }
+    }
+}
+
 /// A content line — either styled text, an image placeholder, or a link.
 #[derive(Debug, Clone)]
 pub enum LineContent {
-    /// Normal styled text line.
-    Styled(Vec<(String, ratatui::style::Style)>),
+    /// Normal styled text line (spans may contain inline links).
+    Styled(Vec<StyledSpan>),
     /// Image placeholder (occupies one visual line).
     Image(ImageNode),
-    /// Hyperlink (occupies one visual line, rendered as styled text).
+    /// Hyperlink (kept for backward compatibility, but no longer emitted by parsers).
     Link(LinkNode),
 }
 
