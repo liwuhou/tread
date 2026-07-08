@@ -84,7 +84,7 @@ jobs:
         if: ${{ endsWith(matrix.archive, '.zip') }}
         shell: pwsh
         run: |
-          & "smoke/${{ matrix.archive_root }}/${{ matrix.exe }}" *> out.txt
+          & "smoke/${{ matrix.exe }}" *> out.txt
           $status = $LASTEXITCODE
           Get-Content out.txt
           if ($status -eq 0) { throw "Expected usage invocation to exit non-zero" }

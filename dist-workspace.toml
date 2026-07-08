@@ -19,6 +19,8 @@ publish-jobs = ["homebrew"]
 global-artifacts-jobs = ["./smoke-packaged-binaries"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Run the x86 macOS build on the Apple Silicon runner; it cross-compiles much faster than queued Intel runners.
+github-custom-runners = { "x86_64-apple-darwin" = "macos-latest" }
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Where to host releases
