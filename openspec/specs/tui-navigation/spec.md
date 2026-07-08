@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines tread's terminal UI shell, status display, help overlay, keyboard navigation, focus behavior, resize handling, and CLI entry behavior.
+
+## Requirements
 
 ### Requirement: Full-screen terminal UI
 系统 SHALL 启动时进入 alternate screen + raw mode，退出时完整恢复终端状态（包括光标显示）。
@@ -20,11 +24,11 @@
 - **THEN** 系统输出错误信息到 stderr，退出码非 0，不进入 TUI
 
 ### Requirement: Status bar
-系统 SHALL 在终端底部显示一行状态栏，包含文件名、当前行号/总行数、滚动百分比。
+系统 SHALL 在终端底部显示一行状态栏，包含文件名、当前行号/总行数、滚动百分比，并支持显隐切换。
 
 #### Scenario: 状态栏内容
 - **WHEN** 打开文件 `sample.md`，共 100 行，当前在第 25 行，终端高度 30
-- **THEN** 状态栏显示 `" sample.md "` + `" 25/100 "` + `" XX% [?]帮助 [q]退出 "`
+- **THEN** 状态栏显示 `sample.md`、`25/100`、滚动百分比和帮助/退出提示
 
 #### Scenario: 到达文件底部
 - **WHEN** 滚动到文件末尾
@@ -33,6 +37,14 @@
 #### Scenario: 状态栏样式
 - **WHEN** 状态栏渲染
 - **THEN** 背景色为 DarkGray，文字为 White，文件名为 Bold
+
+#### Scenario: 按 f 隐藏状态栏
+- **WHEN** 状态栏可见，用户按 `f`
+- **THEN** 状态栏隐藏，正文区域占满全屏
+
+#### Scenario: 再按 f 显示状态栏
+- **WHEN** 状态栏已隐藏，用户按 `f`
+- **THEN** 状态栏重新显示
 
 ### Requirement: Help overlay
 系统 SHALL 在用户按 `?` 时弹出居中浮层，显示所有可用快捷键。
@@ -47,10 +59,10 @@
 
 #### Scenario: 帮助浮层内容
 - **WHEN** 帮助浮层显示
-- **THEN** 包含以下快捷键：j/k（上/下一行）、Ctrl+d/u（半页下/上）、Ctrl+f/b（整页下/上）、PgDn/PgUp（半页）、g/Home（顶部）、G/End（底部）、?（帮助）、q/Esc（退出）
+- **THEN** 包含 j/k、Ctrl+d/u、Ctrl+f/b、PgDn/PgUp、g/Home、G/End、Tab、Shift+Tab、Enter、f、?、q/Esc 等快捷键说明
 
 ### Requirement: Vim-style scroll navigation
-系统 SHALL 支持 vim 风格的键盘导航。
+系统 SHALL 支持 vim 风格的键盘导航，且 Tab / Shift+Tab 在图片和链接之间跳转时，首次聚焦基于当前可视区域位置。
 
 #### Scenario: 单行滚动
 - **WHEN** 用户按 `j` 或 `↓`
@@ -81,6 +93,18 @@
 - **THEN** 内容向下滚动 half_page 行
 - **WHEN** 用户按 `PageUp`
 - **THEN** 内容向上滚动 half_page 行
+
+#### Scenario: Tab 跳到下一个可聚焦元素
+- **WHEN** 文档中有可聚焦元素（图片/链接），用户按 Tab
+- **THEN** 如果当前无焦点，焦点跳到可视区域内或之后的第一个可聚焦元素；如果已有焦点，焦点跳到下一个可聚焦元素
+
+#### Scenario: Shift+Tab 跳到上一个可聚焦元素
+- **WHEN** 文档中有可聚焦元素（图片/链接），用户按 Shift+Tab
+- **THEN** 如果当前无焦点，焦点跳到可视区域内或之前的最后一个可聚焦元素；如果已有焦点，焦点跳到上一个可聚焦元素
+
+#### Scenario: Enter 打开焦点元素
+- **WHEN** 焦点在某可聚焦元素（图片或链接）上，用户按 Enter
+- **THEN** 用系统默认程序打开该元素（图片查看器或浏览器）
 
 ### Requirement: Scroll bounds
 系统 SHALL 限制滚动范围，不可超出文件内容。
@@ -122,30 +146,3 @@
 #### Scenario: 无参数运行
 - **WHEN** 用户运行 `tread`（无参数）
 - **THEN** 系统输出 usage 信息到 stderr，退出码为 1
-### Requirement: Vim-style scroll navigation
-系统 SHALL 支持 vim 风格的键盘导航。**新增**：Tab / Shift+Tab 在图片占位符之间跳转，Enter 打开当前焦点图片。
-#### Scenario: Tab 跳到下一个图片（新增）
-- **WHEN** 文档中有图片，用户按 Tab
-- **THEN** 焦点跳到下一个图片占位符
-#### Scenario: Shift+Tab 跳到上一个图片（新增）
-- **WHEN** 文档中有图片，用户按 Shift+Tab
-- **THEN** 焦点跳到上一个图片占位符
-#### Scenario: Enter 打开焦点图片（新增）
-- **WHEN** 焦点在某图片占位符上，用户按 Enter
-- **THEN** 用系统默认图片浏览器打开该图片
-## MODIFIED Requirements
-
-### Requirement: Vim-style scroll navigation
-系统 SHALL 支持 vim 风格的键盘导航。**新增**：`f` 键切换状态栏显隐。
-
-#### Scenario: 按 f 隐藏状态栏（新增）
-- **WHEN** 状态栏可见，用户按 `f`
-- **THEN** 状态栏隐藏，正文区域占满全屏
-
-#### Scenario: 再按 f 显示状态栏（新增）
-- **WHEN** 状态栏已隐藏，用户按 `f`
-- **THEN** 状态栏重新显示
-
-#### Scenario: 帮助浮层显示 f 键说明（新增）
-- **WHEN** 用户按 `?` 打开帮助
-- **THEN** 帮助列表中显示 `f — 切换状态栏`

@@ -1,7 +1,11 @@
-## ADDED Requirements
+## Purpose
+
+Defines how tread parses Markdown into styled terminal content, including inline styles, links, images, tables, code blocks, and width-aware wrapping.
+
+## Requirements
 
 ### Requirement: Parse Markdown source into styled lines
-系统 SHALL 使用 `pulldown-cmark` 将 Markdown 源文本解析为 `Vec<Line>`，其中每个 `Line` 是 `Vec<(String, Style)>`（styled spans）。解析过程 MUST 为纯函数，不依赖终端状态。
+系统 SHALL 使用 `pulldown-cmark` 将 Markdown 源文本解析为带样式的行。解析过程 MUST 为纯函数，不依赖终端状态。解析器 MUST 识别 `Event::Start(Tag::Image)` 事件并生成 `ImageNode`，而非忽略。
 
 #### Scenario: 解析包含所有基本元素的 Markdown
 - **WHEN** 输入包含标题（H1–H6）、段落、粗体、斜体、删除线、行内代码、围栏代码块、有序列表、无序列表、引用块、表格、分隔线的 Markdown 文本
@@ -9,18 +13,22 @@
 
 #### Scenario: 空输入
 - **WHEN** 输入为空字符串
-- **THEN** 系统返回空的 `Vec<Line>`
+- **THEN** 系统返回空的 styled lines
 
 #### Scenario: 仅空白行
 - **WHEN** 输入为多个空行
-- **THEN** 系统返回对应数量的空 `Line`
+- **THEN** 系统返回对应数量的空行
+
+#### Scenario: 解析包含图片的 Markdown
+- **WHEN** 解析到 `![alt](image.png)`
+- **THEN** 系统生成 `ImageNode`，而不是忽略图片事件
 
 ### Requirement: Heading styles
 系统 SHALL 为 H1–H6 应用不同颜色和修饰样式。
 
 #### Scenario: H1 渲染
 - **WHEN** 解析到 `# Title`
-- **THEN** 输出行包含 `"# "` 前缀和标题文本，样式为 Yellow + Bold + Underline
+- **THEN** 输出行包含 `# ` 前缀和标题文本，样式为 Yellow + Bold + Underline
 
 #### Scenario: H2 渲染
 - **WHEN** 解析到 `## Subtitle`
@@ -35,33 +43,59 @@
 
 #### Scenario: 粗体文本
 - **WHEN** 解析到 `**bold text**`
-- **THEN** 输出 span 包含 "bold text"，样式为 Bold
+- **THEN** 输出 span 包含 `bold text`，样式为 Bold
 
 #### Scenario: 斜体文本
 - **WHEN** 解析到 `*italic text*`
-- **THEN** 输出 span 包含 "italic text"，样式为 Italic
+- **THEN** 输出 span 包含 `italic text`，样式为 Italic
 
 #### Scenario: 行内代码
 - **WHEN** 解析到 `` `code` ``
-- **THEN** 输出 span 包含 " code "（前后带空格），样式为 Green fg + Black bg
+- **THEN** 输出 span 包含 ` code `（前后带空格），样式为 Green fg + Black bg
 
 #### Scenario: 链接
 - **WHEN** 解析到 `[text](url)`
-- **THEN** 输出 span 包含 "text"，样式为 Blue + Underline
+- **THEN** 输出 span 包含 `🔗text`，样式为 Blue + Underline，并带有链接元数据
 
 #### Scenario: 删除线
 - **WHEN** 解析到 `~~struck~~`
-- **THEN** 输出 span 包含 "struck"，样式为 CrossedOut
+- **THEN** 输出 span 包含 `struck`，样式为 CrossedOut
+
+### Requirement: Inline link rendering
+系统 SHALL 将 Markdown 中的链接内联渲染在文本流中，不单独成行。
+
+#### Scenario: 基本内联链接
+- **WHEN** 解析到 `This is a [link](https://example.com) in text`
+- **THEN** 渲染为单行：`This is a 🔗link in text`，链接部分有蓝色下划线样式
+
+#### Scenario: 多个链接在同一段落
+- **WHEN** 段落中有多个链接 `[a](url1) and [b](url2)`
+- **THEN** 渲染为：`🔗a and 🔗b`，每个链接内联显示
+
+#### Scenario: 链接与其他样式组合
+- **WHEN** 链接包含在粗体中 `[**bold link**](url)`
+- **THEN** 渲染为 `🔗bold link`，同时有粗体和链接样式
+
+#### Scenario: 链接文本为空时使用 URL
+- **WHEN** 链接文本为空 `[](https://example.com)`
+- **THEN** 渲染为 `🔗https://example.com`
+
+### Requirement: Link no longer as separate line
+系统 SHALL 不再将链接作为独立的 `LineContent::Link` 行推出。
+
+#### Scenario: 段落中链接不单独成行
+- **WHEN** 解析包含链接的段落
+- **THEN** 输出中链接嵌入在 `LineContent::Styled` 中，不产生独立的 `LineContent::Link`
 
 ### Requirement: Code block rendering
 系统 SHALL 将围栏代码块渲染为带边框和可选语言标签的区域。
 
 #### Scenario: 带语言的代码块
-- **WHEN** 解析到 ````rust\ncode\n````
-- **THEN** 输出包含：语言标签行（"── rust"，DarkGray + Italic）、顶部边框线、代码行（Green fg + Black bg）、底部边框线
+- **WHEN** 解析到带语言标记的围栏代码块
+- **THEN** 输出包含语言标签行（`── rust`，DarkGray + Italic）、顶部边框线、代码行（Green fg + Black bg）、底部边框线
 
 #### Scenario: 无语言的代码块
-- **WHEN** 解析到 ````\ncode\n````
+- **WHEN** 解析到无语言标记的围栏代码块
 - **THEN** 输出不包含语言标签行，仅包含边框线和代码行
 
 ### Requirement: List rendering
@@ -69,7 +103,7 @@
 
 #### Scenario: 无序列表项
 - **WHEN** 解析到 `- item`
-- **THEN** 输出行包含缩进 + "• " 标记（Magenta） + 文本内容
+- **THEN** 输出行包含缩进 + `• ` 标记（Magenta）+ 文本内容
 
 #### Scenario: 嵌套列表
 - **WHEN** 解析到嵌套列表（两层）
@@ -80,7 +114,7 @@
 
 #### Scenario: 引用段落
 - **WHEN** 解析到 `> quoted text`
-- **THEN** 输出行包含 `"  ▎ "` 前缀（DarkGray），后跟引用文本
+- **THEN** 输出行包含 `  ▎ ` 前缀（DarkGray），后跟引用文本
 
 ### Requirement: Table rendering
 系统 SHALL 以 `│` 分隔单元格的方式渲染表格。
@@ -100,20 +134,17 @@
 系统 SHALL 在将 styled lines 换行为终端宽度时，对英文按空格分词换行，对 CJK / 全角字符按字符换行。
 
 #### Scenario: 英文文本换行
-- **WHEN** 终端宽度为 20，输入行 "hello world foo bar baz"
-- **THEN** 换行后第一行为 "hello world foo bar"，第二行为 "baz"（在空格处断行）
+- **WHEN** 终端宽度为 20，输入行 `hello world foo bar baz`
+- **THEN** 换行后第一行为 `hello world foo bar`，第二行为 `baz`（在空格处断行）
 
 #### Scenario: 中文文本换行
-- **WHEN** 终端宽度为 10，输入行 "你好世界这是一个测试"（每个中文字符占 2 列宽）
+- **WHEN** 终端宽度为 10，输入行 `你好世界这是一个测试`（每个中文字符占 2 列宽）
 - **THEN** 每行最多 5 个中文字符（10 列宽），在字符边界换行
 
 #### Scenario: 中英混排换行
-- **WHEN** 终端宽度为 20，输入行 "hello 你好 world 世界"
+- **WHEN** 终端宽度为 20，输入行 `hello 你好 world 世界`
 - **THEN** 英文在空格处断行，中文在字符间断行，同一行可混合
 
 #### Scenario: 超长单词强制断行
-- **WHEN** 终端宽度为 10，输入行 "abcdefghijklmnop"（16 字符，超过行宽）
+- **WHEN** 终端宽度为 10，输入行 `abcdefghijklmnop`（16 字符，超过行宽）
 - **THEN** 系统按字符断行，每行最多填满行宽
-### Requirement: Parse Markdown source into styled lines
-系统 SHALL 使用 `pulldown-cmark` 将 Markdown 源文本解析为带样式的行。**新增**：解析器 MUST 识别 `Event::Start(Tag::Image)` 事件并生成 `ImageNode`，而非忽略。
-#### Scenario: 解析包含图片的 Markdown（新增）
