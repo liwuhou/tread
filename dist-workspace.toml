@@ -13,8 +13,9 @@ tag-namespace = "v"
 installers = ["shell", "powershell", "homebrew"]
 # Homebrew tap to publish the generated formula to (GitHub owner/name format)
 tap = "liwuhou/homebrew-tap"
-# Publish Homebrew formula updates after release artifacts are built
-publish-jobs = ["homebrew"]
+# Keep generated Homebrew formulae as release assets. Enable tap publishing after
+# liwuhou/homebrew-tap exists and HOMEBREW_TAP_TOKEN is configured.
+publish-jobs = []
 # Verify packaged target archives before publishing the GitHub Release
 global-artifacts-jobs = ["./smoke-packaged-binaries"]
 # Target platforms to build apps for (Rust target-triple syntax)
