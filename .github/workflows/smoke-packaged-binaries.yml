@@ -95,3 +95,4 @@ jobs:
           Get-Content out.txt
           if ($status -eq 0) { throw "Expected usage invocation to exit non-zero" }
           if (-not (Select-String -Path out.txt -Pattern "Usage: tread" -Quiet)) { throw "Expected usage output" }
+          exit 0
