@@ -145,6 +145,12 @@ fn draw_markdown(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let line = status_bar_line(app, area.width);
+    let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
+    frame.render_widget(bar, area);
+}
+
+fn status_bar_line(app: &App, area_width: u16) -> Line<'static> {
     let total = app.total_lines();
     let current = app.scroll + 1;
     let h = app.height.unwrap_or(0) as usize;
@@ -169,12 +175,12 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     );
 
     // Show status message if present, otherwise show help/quit hints
-    let right_text = if let Some(ref msg) = app.status_message {
+    let right_text = if let Some(msg) = &app.status_message {
         format!(" ⚠ {msg} ")
     } else if app.help_visible {
         " 按任意键关闭帮助 ".to_string()
     } else {
-        format!(" {percent}% [?]帮助 [q]退出 ")
+        format!(" {percent}% [?]帮助 [D]书架 [q]退出 ")
     };
     let right_style = if app.status_message.is_some() {
         Style::default().fg(Color::Yellow).bg(Color::DarkGray)
@@ -183,13 +189,11 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
     let right = Span::styled(right_text, right_style);
 
-    let used: usize = left.content.len() + middle.content.len() + right.content.len();
-    let filler_len = (area.width as usize).saturating_sub(used);
+    let used = left.width() + middle.width() + right.width();
+    let filler_len = (area_width as usize).saturating_sub(used);
     let filler = Span::styled(" ".repeat(filler_len), Style::default().bg(Color::DarkGray));
 
-    let line = Line::from(vec![left, middle, right, filler]);
-    let bar = Paragraph::new(line);
-    frame.render_widget(bar, area);
+    Line::from(vec![left, middle, right, filler])
 }
 
 fn draw_toc(frame: &mut Frame, app: &App, area: Rect) {
@@ -256,6 +260,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         help_row("t", "目录 (EPUB)"),
         help_row("f", "切换状态栏"),
         help_row("?", "显示/关闭帮助"),
+        help_row("D", "返回 dashboard"),
         help_row("q / Esc", "退出"),
     ];
 
@@ -292,4 +297,40 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     .split(vert[1]);
 
     horiz[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::status_bar_line;
+    use crate::{app::App, image::LineContent};
+    use unicode_width::UnicodeWidthStr;
+
+    fn render_text_width(line: &ratatui::text::Line<'_>) -> usize {
+        let text: String = line.spans.iter().map(|span| span.content.as_ref()).collect();
+        UnicodeWidthStr::width(text.as_str())
+    }
+
+    #[test]
+    fn status_bar_fills_full_width_with_wide_characters() {
+        let mut app = App::new(
+            vec![LineContent::Styled(Vec::new()); 269],
+            "LLM 编译知识库：如何让知识库持续积累和互联？".to_string(),
+        );
+        app.set_height(1);
+
+        let line = status_bar_line(&app, 120);
+
+        assert_eq!(render_text_width(&line), 120);
+    }
+
+    #[test]
+    fn status_bar_fills_full_width_with_status_message() {
+        let mut app = App::new(vec![LineContent::Styled(Vec::new()); 42], "test.md".to_string());
+        app.set_height(10);
+        app.status_message = Some("下载失败，请重试".to_string());
+
+        let line = status_bar_line(&app, 80);
+
+        assert_eq!(render_text_width(&line), 80);
+    }
 }

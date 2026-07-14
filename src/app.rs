@@ -273,6 +273,7 @@ pub struct App {
 pub enum Action {
     Continue,
     Quit,
+    Dashboard,
     /// Request to load a different chapter (EPUB mode).
     /// The bool indicates whether to scroll to bottom (true = prev chapter, false = next chapter).
     LoadChapter(usize, bool),
@@ -546,6 +547,7 @@ impl App {
         let half_page = (h / 2).max(1);
 
         match key.code {
+            KeyCode::Char('D') => return Action::Dashboard,
             KeyCode::Char('q') | KeyCode::Char('Q') => return Action::Quit,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 return Action::Quit;
@@ -1049,6 +1051,13 @@ mod tests {
         let mut app = make_app(100, 10);
         let action = app.handle_key(key(KeyCode::Esc));
         assert!(matches!(action, Action::Quit));
+    }
+
+    #[test]
+    fn capital_d_returns_dashboard() {
+        let mut app = make_app(100, 10);
+        let action = app.handle_key(key(KeyCode::Char('D')));
+        assert!(matches!(action, Action::Dashboard));
     }
 
     #[test]

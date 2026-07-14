@@ -26,7 +26,7 @@ pub struct WebCacheMeta {
 }
 
 /// Reading progress for a web page.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebProgress {
     pub url: String,
     pub scroll: usize,

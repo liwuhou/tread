@@ -37,6 +37,7 @@ Download the archive for your platform from the GitHub Releases page:
 ## Usage
 
 ```sh
+tread                         # open the reading dashboard
 tread <file.md|file.epub|url> [-r|--refresh] [-i|--interactive]
 ```
 
@@ -45,11 +46,24 @@ Options:
 - `-r`, `--refresh`: force refresh for web pages and skip cache.
 - `-i`, `--interactive`: use Chrome for dynamic pages.
 
+Dashboard keys:
+
+- `j` / `k` / arrow keys: move between history entries.
+- `Enter`: continue the selected URL, EPUB, or Markdown file from saved progress.
+- `o`: open a new local path or URL from the dashboard prompt; URLs can include `-i`/`--interactive` and `-r`/`--refresh`, for example `https://example.com -i`.
+- `s`: star or unstar the selected entry; starred entries are shown first.
+- `r`: remove the selected entry from the dashboard without deleting the file.
+- `q`: quit the dashboard.
+
+The dashboard stores unified reading history in `~/.tread/history.json`. Reopening a hidden target makes it visible again and clears its starred state.
+When the terminal is very short, the dashboard prioritizes the recent-reading area and may hide footer hints, prompt suggestions, or prompt/error text until more height is available.
+
 Keys:
 
 - `j` / `k` / arrow keys: scroll one line.
 - `Ctrl+d` / `Ctrl+u`: scroll half a page.
 - `g` / `G`: jump to top or bottom.
+- `D`: return to the dashboard.
 - `Tab`: focus the next image or link.
 - `Enter`: open the focused image or link.
 - `Ctrl+n` / `Ctrl+p`: next or previous EPUB chapter.
@@ -62,8 +76,8 @@ Keys:
 Maintainers publish releases by pushing a version tag:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 The release workflow builds platform archives with cargo-dist and publishes them to GitHub Releases. Homebrew distribution is configured to consume the prebuilt GitHub Release binaries from `liwuhou/tread` and publish formula updates to the `liwuhou/homebrew-tap` repository.
@@ -76,7 +90,7 @@ Release prerequisites:
 Before tagging a release, verify packaging locally:
 
 ```sh
-dist plan --tag v0.1.0
+dist plan --tag v0.1.1
 cargo publish --dry-run --allow-dirty
 ```
 

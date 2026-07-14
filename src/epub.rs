@@ -53,7 +53,7 @@ pub struct EpubBook {
     pub file_path: PathBuf,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReadingProgress {
     pub chapter: usize,
     pub scroll: usize,
