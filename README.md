@@ -2,6 +2,8 @@
 
 `tread` is a terminal-based reader for Markdown, EPUB, and web content.
 
+[中文指南](README-zh.md)
+
 ## Features
 
 - Read local Markdown files in a terminal UI.
